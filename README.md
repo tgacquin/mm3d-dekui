@@ -17,7 +17,7 @@ A custom fork of the Azahar emulator is used.
 - Project Restoration features (https://restoration.zora.re/)
 - Redesigned HUD elements (smaller and wider textboxes, thicker magic bar) meant to emulate a console-like experience
 - HUD scaling, positioning, spacing, and visibility controls
-- Difficulty options (damage multiplier, adjustable red potion, blue potion, and bottled fairy healing, no heart, rupee, or fairy drops, rupee loss or moon crash on death, and experimental doubled purchase prices)
+- Difficulty options (damage multiplier, adjustable red potion, blue potion, and bottled fairy healing, no heart, rupee, fairy, or magic drops, disabled ammo pickups, rupee loss or moon crash on death, and experimental doubled purchase prices)
 - Widescreen, increased FOV, and slider to adjust camera distance
 - All references to the bottom screen and home button have been removed
 - Correct rupee sounds for HLE audio (for the first time through a 3DS emulator!)
