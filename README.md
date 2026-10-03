@@ -17,7 +17,7 @@ A custom fork of the Azahar emulator is used.
 - Project Restoration features (https://restoration.zora.re/)
 - Redesigned HUD elements (smaller and wider textboxes, thicker magic bar) meant to emulate a console-like experience
 - HUD scaling, positioning, spacing, and visibility controls
-- Difficulty options (damage multiplier and no heart drops)
+- Difficulty options (damage multiplier, no heart or rupee drops, double priced items)
 - Widescreen, increased FOV, and slider to adjust camera distance
 - All references to the bottom screen and home button have been removed
 - Correct rupee sounds for HLE audio (for the first time through a 3DS emulator!)
