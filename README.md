@@ -3,7 +3,7 @@
 This is a mod to make Majora's Mask 3D fully functional on one screen. In fact, the bottom screen isn't even accessible. 
 
 Every element that could only be interacted with through the bottom screen has now been brought to the top. Previously large HUD elements have also been adapted
-in an effort to bring it line with the original game.
+in an effort to bring it in line with the original game.
 
 A custom fork of the Azahar emulator is used.
 
@@ -70,10 +70,10 @@ A custom fork of the Azahar emulator is used.
 
 ## Note about this project
 
-AI was used extensively for the purpose of identifying each element the game renders and allowing repositioning, scaling, and transforming of them from the bottom screen to the top screen. This would not have been feasible for me to do as the game is not yet decompiled and changes have to be done at the assembly level. If this bothers you, the recompilation of the original is still one of the best ways to play this game.
+AI was used extensively for the purpose of identifying each element the game renders and allowing repositioning, scaling, and transforming of them from the bottom screen to the top screen. This would not have been feasible for me to do as the game is not yet decompiled and changes have to be done at the assembly level. If this bothers you, the recompilation of the original is still a great way to play this game.
 
-This project is also currently in beta and likely has many bugs/crashes I've yet to see. Make sure you save and I will keep working towards addressing these.
+This project is also currently in beta and likely has many bugs/crashes I've yet to see. Make sure you save often.
 
-Because this project uses the Azahar emulator, expect shader stuttering. These should subside within an hour of playing. I will see if there are ways to optimize this out as it is pretty annoying.
+Because this project uses the Azahar emulator, expect shader stuttering. These should subside within an hour of playing.
 
 Thank you to leoetlino for his work on Project Restoration!
