@@ -19,6 +19,7 @@ A custom fork of the Azahar emulator is used.
 - HUD scaling, positioning, spacing, and visibility controls
 - Difficulty options (damage multiplier and no heart drops)
 - Widescreen, increased FOV, and slider to adjust camera distance
+- All references to the bottom screen and home button have been removed
 - Correct rupee sounds for HLE audio (for the first time through a 3DS emulator!)
 - Pause menu background image adapts to resolution (3DS/emulators default to 240p)
 - Custom texture support
