@@ -39,6 +39,8 @@ The game stays in place; setup does not move or duplicate it. Later launches use
 
 Press **F1** for Graphics, HUD, Difficulty, Audio, Controls, and About. Game touchscreen input is disabled. Controller and keyboard mappings can be changed under Controls.
 
+Hold **ZR** and press **SELECT** during gameplay to hide or show the minimap. The full map remains available from the inventory Map tab.
+
 For an optional texture pack, use **Graphics → Open texture folder**, install a compatible pack, enable **Use custom textures**, and restart Dekui.
 
 ## Updates and saves
