@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible problem with Dekui.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach game files, keys, or saves. Review logs for personal information before sharing."
+  - type: input
+    id: version
+    attributes:
+      label: Dekui release version
+      placeholder: Version shown in the release download
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows 10/11 x64
+        - Steam Deck Desktop Mode
+        - Steam Deck Gaming Mode
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, what happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Hardware, settings, and logs
+      description: Include relevant graphics hardware, changed settings, and reviewed log excerpts.

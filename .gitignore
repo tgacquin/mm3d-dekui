@@ -1,0 +1,12 @@
+# Release binaries and source archives belong in release assets.
+*.zip
+*.7z
+*.tar.gz
+*.AppImage
+*.exe
+# Never publish local games or user data.
+*.cci
+*.3ds
+user/
+game/
+.DS_Store
