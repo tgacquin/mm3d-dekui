@@ -1,4 +1,4 @@
-# Dekui
+# dekui
 
 This is a mod to make Majora's Mask 3D fully functional on one screen. In fact, the bottom screen isn't even accessible.
 
