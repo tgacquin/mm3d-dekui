@@ -3,9 +3,10 @@
 This is a mod to make Majora's Mask 3D fully functional on one screen. In fact, the bottom screen isn't even accessible.
 
 Every element that could only be interacted with through the bottom screen has now been brought to the top. Previously large HUD elements have also been adapted
-in an effort to bring it in line with the original game.
+in an effort to bring it in line with the original game. The goal was to make this game feel like any other console Zelda while also allowing for a very
+customizable experience so it could feel fresh for returning players.
 
-A custom fork of the Azahar emulator is used.
+A custom fork of Azahar is used as the backing engine.
 
 ## Features
 
@@ -17,13 +18,13 @@ A custom fork of the Azahar emulator is used.
 - Project Restoration features (https://restoration.zora.re/)
 - Redesigned HUD elements (smaller and wider textboxes, thicker magic bar) meant to emulate a console-like experience
 - HUD scaling, positioning, spacing, and visibility controls
-- Difficulty options (damage multiplier, adjustable red potion, blue potion, and bottled fairy healing, no heart, rupee, fairy, or magic drops, disabled ammo pickups, rupee loss or moon crash on death, and experimental doubled purchase prices)
+- Difficulty options (damage multiplier, adjustable red potion, blue potion, and bottled fairy healing, no heart, rupee, fairy, or magic drops, disabled ammo pickups, rupee loss or moon crash on death, and doubled purchase prices)
 - Widescreen, increased FOV, and slider to adjust camera distance
-- All references to the bottom screen and home button have been removed
+- References in text to the bottom screen and other 3DS specific features have been replaced with any new controls for a more console-like experience
 - Correct rupee sounds for HLE audio (for the first time through a 3DS emulator!)
 - Pause menu background image adapts to resolution (3DS/emulators default to 240p)
-- Custom texture support
 - Correct bloom lighting at higher resolutions
+- Custom texture support
 - Many other minor changes in camera and HUD elements
 
 ## Screenshots
@@ -53,12 +54,12 @@ A custom fork of the Azahar emulator is used.
 
 ## Planned features
 
-- Remove every references to the bottom screen and replace with correct buttons
 - More difficulty options
-- Further restoration features that are also toggleable
+- Toggleable restoration features
+- Randomizer support
+- Graphical enhancements
 - 60fps
-- Further UI polishing/redesign
-- Bug fixing
+- Further UI polishing/redesign and bug fixing
 
 ## Getting started
 
@@ -66,14 +67,15 @@ A custom fork of the Azahar emulator is used.
 2. Put Majora's Mask 3D (USA 1.1) in the same folder as the application
 3. Run the app. First launch silently checks the game and prepares its files automatically.
 
-**Press F1 to open settings and adjust camera zoom, HUD layout, controls, audio, graphics, and difficulty. Camera zoom is under Graphics.**
+**Press F1 to open settings and adjust camera zoom, HUD layout, controls, audio, graphics, and difficulty.**
 
 
 ## Note about this project
 
-AI was used extensively for the purpose of identifying each element the game renders and allowing repositioning, scaling, and transforming of them from the bottom screen to the top screen. This would not have been feasible for me to do as the game is not yet decompiled and changes have to be done at the assembly level. If this bothers you, the recompilation of the original is still a great way to play this game.
+AI was used extensively for the purpose of identifying each element the game renders and allowing repositioning, scaling, and transforming of them from the bottom screen to the top screen. This project otherwise would not have been feasible for me to do as the game is not yet decompiled and changes have to be done at the assembly level. However, all repositioning/scaling of the elements for a clean interface was done by me and required a lot of forethought in terms of
+how the layouts should look. For those unwilling to try this project because of this, please play the recompilation which is also an excellent way to enjoy this game.
 
-This project is also currently in beta and likely has many bugs/crashes I've yet to see. Make sure you save often.
+This project is currently in beta and likely has many bugs I've yet to see so make sure you save frequently!
 
 Because this project uses the Azahar emulator, expect shader stuttering. These should subside within an hour of playing.
 
