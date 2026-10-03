@@ -1,6 +1,6 @@
 # Dekui
 
-This is a mod to make Majora's Mask 3D fully functional on one screen. In fact, the bottom screen isn't even accessible. 
+This is a mod to make Majora's Mask 3D fully functional on one screen. In fact, the bottom screen isn't even accessible.
 
 Every element that could only be interacted with through the bottom screen has now been brought to the top. Previously large HUD elements have also been adapted
 in an effort to bring it in line with the original game.
@@ -17,12 +17,13 @@ A custom fork of the Azahar emulator is used.
 - Project Restoration features (https://restoration.zora.re/)
 - Redesigned HUD elements (smaller and wider textboxes, thicker magic bar) meant to emulate a console-like experience
 - HUD scaling, positioning, spacing, and visibility controls
-- Difficulty options (damage multiplier, no heart, rupee, or fairy drops, rupee loss or moon crash on death, and experimental doubled purchase prices)
+- Difficulty options (damage multiplier, adjustable red potion, blue potion, and bottled fairy healing, no heart, rupee, or fairy drops, rupee loss or moon crash on death, and experimental doubled purchase prices)
 - Widescreen, increased FOV, and slider to adjust camera distance
 - All references to the bottom screen and home button have been removed
 - Correct rupee sounds for HLE audio (for the first time through a 3DS emulator!)
 - Pause menu background image adapts to resolution (3DS/emulators default to 240p)
 - Custom texture support
+- Correct bloom lighting at higher resolutions
 - Many other minor changes in camera and HUD elements
 
 ## Screenshots
