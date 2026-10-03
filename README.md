@@ -39,7 +39,7 @@ A custom fork of Azahar is used as the backing engine.
     <td><img width="350" alt="Screenshot 2026-10-02 at 12 24 33 PM" src="https://github.com/user-attachments/assets/a4b8a4ff-8c8c-4422-939f-098599a2931b" /></td>
   </tr>
   <tr>
-    <td><img width="350" alt="Screenshot 2026-10-02 at 12 35 30 PM" src="https://github.com/user-attachments/assets/c92d6580-d7a7-467f-9484-2da12cb2f242" /></td>
+    <td><img width="350" alt="Screenshot 2026-10-03 at 2 44 17 PM" src="https://github.com/user-attachments/assets/91f4d8e8-f15e-4e51-a6d0-2977a7d18b1e" /></td>
     <td><img width="350" alt="Screenshot 2026-10-02 at 12 24 57 PM" src="https://github.com/user-attachments/assets/a86a93a6-683f-4d57-81f0-09e11770c374" /></td>
   </tr>
   <tr>
