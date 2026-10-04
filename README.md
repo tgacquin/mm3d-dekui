@@ -54,6 +54,7 @@ A custom fork of Azahar is used as the backing engine.
 
 ## Planned features
 
+- Windows support is top priority
 - More difficulty options
 - Toggleable restoration features
 - Randomizer support
