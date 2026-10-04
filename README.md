@@ -54,6 +54,7 @@ A custom fork of Azahar is used as the backing engine.
 
 ## Planned features
 
+- Ultrawide/4:3 support
 - More difficulty options
 - Toggleable restoration features
 - Randomizer support
