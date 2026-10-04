@@ -54,7 +54,6 @@ A custom fork of Azahar is used as the backing engine.
 
 ## Planned features
 
-- Windows support is top priority
 - More difficulty options
 - Toggleable restoration features
 - Randomizer support
@@ -77,7 +76,5 @@ AI was used extensively for the purpose of identifying each element the game ren
 how the layouts should look. For those unwilling to try this project because of this, please play the recompilation which is also an excellent way to enjoy this game.
 
 This project is currently in beta and likely has many bugs I've yet to see so make sure you save frequently!
-
-Currently only Linux is available due to rendering issues on Windows, but I am working on supporting it.
 
 Thank you to leoetlino for his work on Project Restoration!
