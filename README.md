@@ -78,6 +78,6 @@ how the layouts should look. For those unwilling to try this project because of 
 
 This project is currently in beta and likely has many bugs I've yet to see so make sure you save frequently!
 
-Because this project uses the Azahar emulator, expect shader stuttering. These should subside within an hour of playing.
+Currently only Linux is available due to rendering issues on Windows, but I am working on supporting it.
 
 Thank you to leoetlino for his work on Project Restoration!
