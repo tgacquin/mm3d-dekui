@@ -11,6 +11,7 @@
 #include <vector>
 #include "mm3d/dialogue_scale.h"
 #include "mm3d/gear_menu.h"
+#include "mm3d/photo_capture.h"
 
 namespace MM3D::NativeInventory {
 using U32 = std::uint32_t;
@@ -864,7 +865,24 @@ struct Hook {
         return page&&Pointer(*page,0x198)&&m.Read(*page)==0x63a270&&
             m.Read(0x72f5bc+8)==page&&m.Read(*page+0x10)==layout;
     }
-    template<class M> bool PrepareGearPhoto(M& m,U32 layout,std::vector<Write>& writes) {
+    template<class M> bool PhotoBorder(M& m,const std::vector<U32>& nodes,std::vector<Write>& writes) {
+        for(const auto node:nodes)if(Named(m,node,"frame_base_pane")) {
+            const auto geo=m.Read(node+0x28);
+            if(!geo || !Pointer(*geo,0x28))continue;
+            const auto kind=m.Read(*geo+4);if(!kind || (*kind&0xffff)!=5)continue;
+            // Verified UpCollect gradient rectangle: [-104,-64,208,128].
+            // The picture is 200x120. Widen only the picture's 200 pixels;
+            // retain four screen-space pixels of border on every edge.
+            if(m.Read(*geo+0x14)!=std::bit_cast<U32>(-104.f) ||
+               m.Read(*geo+0x18)!=std::bit_cast<U32>(-64.f) ||
+               m.Read(*geo+0x20)!=std::bit_cast<U32>(208.f) ||
+               m.Read(*geo+0x24)!=std::bit_cast<U32>(128.f))continue;
+            if(!Stage(m,writes,*geo+0x14,std::bit_cast<U32>(-103.75f)) ||
+               !Stage(m,writes,*geo+0x20,std::bit_cast<U32>(207.5f)))return false;
+        }
+        return true;
+    }
+    template<class M> bool PrepareGearPhoto(M& m,U32 layout,std::vector<Write>& writes,bool widescreen) {
         auto p=GearMenu::Get(GearMenu::Photo);
         if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.scale))return false;
         p.x=std::clamp(p.x,-320.f,320.f);p.y=std::clamp(p.y,-240.f,240.f);
@@ -872,14 +890,25 @@ struct Hook {
         std::vector<U32> seen;
         // Transform the complete photo layout, including both eyes and frame
         // artwork, around the native top-screen center. Restore after drawing.
-        return Transform(m,layout+8,writes,seen,{p.scale,0,0,p.scale,
-            p.x+200.f*(1-p.scale),p.y+120.f*(1-p.scale)});
+        const bool hd_photo=widescreen && PhotoCapture::enabled.load() && PhotoCapture::layout.load()==layout;
+        const float sx=p.scale*(hd_photo?16.f/15.f:1.f);
+        return Transform(m,layout+8,writes,seen,{sx,0,0,p.scale,
+            p.x+200.f*(1-sx),p.y+120.f*(1-p.scale)}) &&
+            (!hd_photo || PhotoBorder(m,seen,writes));
     }
     template<class Memory> void Begin(Memory& m,U32 layout,bool widescreen=false) {
         frames.emplace_back();
+        if(widescreen && PhotoCapture::enabled.load() && PhotoCapture::layout.load()==layout && !GearPhoto(m,layout)) {
+            std::vector<Write> writes;std::vector<U32> seen;
+            if(Transform(m,layout+8,writes,seen,{16.f/15.f,0,0,1,-200.f/15.f,0}) && PhotoBorder(m,seen,writes)) {
+                for(const auto& w:writes)m.Write(w.address,w.after);
+                frames.back()=std::move(writes);
+            }
+            return;
+        }
         if(GearPhoto(m,layout)) {
             std::vector<Write> writes;
-            if(!PrepareGearPhoto(m,layout,writes))return;
+            if(!PrepareGearPhoto(m,layout,writes,widescreen))return;
             for(const auto& w:writes)m.Write(w.address,w.after);
             frames.back()=std::move(writes);return;
         }

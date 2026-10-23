@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include <algorithm>
 #include <array>
+#include <limits>
 #include <cmath>
 #include <cstdint>
 #include <optional>
@@ -14,6 +16,9 @@ struct Pattern {
     std::array<float,6> step;
     Tev material;
     std::array<float,6> alternate_step{};
+    unsigned source=6;
+    bool rotating=false;
+    std::array<float,6> wrap{};
 };
 // Great Bay Temple's two vortex layers and the captured coastal waterfall,
 // foam and surface layers. Mesh size alone never identifies a material.
@@ -99,36 +104,199 @@ inline constexpr Pattern Patterns[]{
     {144,7,1,{{{4.f,0.f,0.f},{0.f,1.f,0.f},{6.f,0.f,0.f},{0.f,2.f,0.f},{8.f,0.f,0.f},{0.f,-3.f,0.f}}},
         {-1.f/15,0,-1.f/20,-2.f/15,0,1.f/10},
         {{{239272788u,139264u,65545u,4278190080u,0u},{250547743u,0u,65536u,4278190080u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    // Zora Hall waterfall, foam and pool layers from the room capture.
+    {1578,3,1,{{{0.8659675121f,0.499966383f,0.f},{-0.499966383f,0.8659675121f,0.f},{1.879287601f,0.6840041876f,0.f},{-0.6840041876f,1.879287601f,0.f}}},
+        {1.f/600,-1.f/600,0,-1.f/300},
+        {{{238030403u,0u,65545u,4283190348u,0u},{236916547u,0u,8u,4283190348u,1u},{236916255u,0u,1u,4283190348u,0u},{236916239u,0u,1u,4283190348u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {168,1,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,1.f/40},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{0,1.f/96}},
+    {144,1,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,1.f/30},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {63,3,1,{{{3.f,0.f,0.f},{0.f,3.f,0.f},{3.463870049f,-1.999865532f,0.f},{1.999865532f,3.463870049f,0.f}}},
+        {0,3.f/100,0,1.f/50},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916544u,0u,8u,4278190080u,0u},{236916515u,4u,8u,4278190080u,0u},{250547727u,0u,65537u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},2},
+    {210,3,1,{{{3.f,0.f,0.f},{0.f,3.f,0.f},{3.463870049f,-1.999865532f,0.f},{1.999865532f,3.463870049f,0.f}}},
+        {0,1.f/100,0,1.f/150},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916544u,0u,8u,4278190080u,0u},{236916515u,4u,8u,4278190080u,0u},{250547727u,0u,65537u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {297,1,7,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,-1.f/75},
+        {{{238030385u,0u,65537u,4293584324u,0u},{236916463u,0u,1u,4293584324u,0u},{236916239u,0u,1u,4293584324u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {153,1,7,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,-1.f/75},
+        {{{238030385u,0u,65537u,4293584324u,0u},{236916463u,0u,1u,4293584324u,0u},{236916239u,0u,1u,4293584324u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {222,3,1,{{{3.f,0.f,0.f},{0.f,3.f,0.f},{3.463870049f,-1.999865532f,0.f},{1.999865532f,3.463870049f,0.f}}},
+        {0,1.f/100,0,1.f/150},
+        {{{238030385u,0u,65537u,4278190080u,0u},{250548032u,0u,65544u,4278190080u,0u},{236916515u,4u,8u,4278190080u,0u},{250547727u,0u,65537u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {99,1,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,1.f/60},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    // Great Bay main rotor room: vortex sheets and the two waterfall layers.
+    {72,7,1,{{{3.535533905f,3.535533905f,0.f},{-3.535533905f,3.535533905f,0.f},{5.637862682f,2.052012444f,0.f},{-1.710010529f,4.698218822f,0.f},{5.999596119f,-10.39161015f,0.f},{10.39161015f,5.999596119f,0.f}}},
+        {0,0,9.f/200,0,-1.f/20,0},
+        {{{238030403u,0u,65537u,4294967295u,0u},{236916517u,0u,8u,4294967295u,0u},{236916511u,0u,1u,4294967295u,1u},{236916239u,0u,1u,4294967295u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {219,7,1,{{{0.9658611417f,-0.2588019073f,0.f},{0.2588019073f,0.9658611417f,0.f},{2.897583485f,-0.7764056921f,0.f},{0.7764056921f,2.897583485f,0.f},{1.992241144f,-0.1742986441f,0.f},{0.1742986441f,1.992241144f,0.f}}},
+        {1.f/200,-17.f/600,1.f/40,-7.f/200,1.f/100,-1.f/30},
+        {{{196931u,0u,65537u,4284045657u,0u},{236916575u,0u,8u,4284045657u,0u},{236916239u,0u,1u,4284045657u,2u},{236916463u,0u,1u,4284045657u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {288,7,1,{{{0.9658611417f,-0.2588019073f,0.f},{0.2588019073f,0.9658611417f,0.f},{2.897583485f,-0.7764056921f,0.f},{0.7764056921f,2.897583485f,0.f},{1.992241144f,-0.1742986441f,0.f},{0.1742986441f,1.992241144f,0.f}}},
+        {1.f/200,-17.f/600,1.f/40,-7.f/200,1.f/100,-1.f/30},
+        {{{196931u,0u,65537u,4284045657u,0u},{236916575u,0u,8u,4284045657u,0u},{236916239u,0u,1u,4284045657u,2u},{236916463u,0u,1u,4284045657u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {324,7,1,{{{0.9658611417f,-0.2588019073f,0.f},{0.2588019073f,0.9658611417f,0.f},{2.897583485f,-0.7764056921f,0.f},{0.7764056921f,2.897583485f,0.f},{1.992241144f,-0.1742986441f,0.f},{0.1742986441f,1.992241144f,0.f}}},
+        {1.f/200,-17.f/600,1.f/40,-7.f/200,1.f/100,-1.f/30},
+        {{{196931u,0u,65537u,4284045657u,0u},{236916575u,0u,8u,4284045657u,0u},{236916239u,0u,1u,4284045657u,2u},{236916463u,0u,1u,4284045657u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {312,7,1,{{{0.9658611417f,-0.2588019073f,0.f},{0.2588019073f,0.9658611417f,0.f},{2.897583485f,-0.7764056921f,0.f},{0.7764056921f,2.897583485f,0.f},{1.992241144f,-0.1742986441f,0.f},{0.1742986441f,1.992241144f,0.f}}},
+        {1.f/200,-17.f/600,1.f/40,-7.f/200,1.f/100,-1.f/30},
+        {{{196931u,0u,65537u,4284045657u,0u},{236916575u,0u,8u,4284045657u,0u},{236916239u,0u,1u,4284045657u,2u},{236916463u,0u,1u,4284045657u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {279,7,1,{{{0.9658611417f,-0.2588019073f,0.f},{0.2588019073f,0.9658611417f,0.f},{2.897583485f,-0.7764056921f,0.f},{0.7764056921f,2.897583485f,0.f},{1.992241144f,-0.1742986441f,0.f},{0.1742986441f,1.992241144f,0.f}}},
+        {1.f/200,-17.f/600,1.f/40,-7.f/200,1.f/100,-1.f/30},
+        {{{196931u,0u,65537u,4284045657u,0u},{236916575u,0u,8u,4284045657u,0u},{236916239u,0u,1u,4284045657u,2u},{236916463u,0u,1u,4284045657u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {207,7,1,{{{0.9658611417f,-0.2588019073f,0.f},{0.2588019073f,0.9658611417f,0.f},{2.897583485f,-0.7764056921f,0.f},{0.7764056921f,2.897583485f,0.f},{1.992241144f,-0.1742986441f,0.f},{0.1742986441f,1.992241144f,0.f}}},
+        {1.f/200,-17.f/600,1.f/40,-7.f/200,1.f/100,-1.f/30},
+        {{{196931u,0u,65537u,4284045657u,0u},{236916575u,0u,8u,4284045657u,0u},{236916239u,0u,1u,4284045657u,2u},{236916463u,0u,1u,4284045657u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {432,7,1,{{{2.f,0.f,0.f},{0.f,4.f,0.f},{2.f,0.f,0.f},{0.f,3.f,0.f},{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {-1.f/100,8.f/75,0,1.f/20,0,1.f/24},
+        {{{4394545u,0u,65537u,4278190080u,0u},{6229844u,0u,589832u,4278190080u,0u},{237964815u,0u,65537u,4278190080u,1u},{250547743u,0u,65536u,4278190080u,0u},{250547743u,0u,65536u,4278190080u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {132,3,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f},{0.9961205721f,-0.08714932203f,0.f},{0.08714932203f,0.9961205721f,0.f}}},
+        {1.f/40,-1.f/600,1.f/60,0},
+        {{{3411505u,8192u,589825u,4294960588u,0u},{236916303u,0u,1u,4294960588u,0u},{250547951u,0u,65537u,4294960588u,0u},{250547727u,0u,65537u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {300,7,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f},{1.f,0.f,0.f},{0.f,1.75f,0.f},{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {-1.f/200,1.f/30,1.f/300,7.f/150,0,19.f/600},
+        {{{4394545u,0u,65537u,4278190080u,0u},{6229844u,0u,196616u,4278190080u,0u},{237964815u,0u,65537u,4278190080u,1u},{235867679u,0u,65536u,4278190080u,0u},{250547743u,0u,65536u,4278190080u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    // Zora room waterfall follow-up: separate sheet, foam and surface materials.
+    {1896,3,1,{{{0.8659675121f,0.499966383f,0.f},{-0.499966383f,0.8659675121f,0.f},{1.879287601f,0.6840041876f,0.f},{-0.6840041876f,1.879287601f,0.f}}},
+        {0,1.f/400,1.f/600,-1.f/300},
+        {{{238030403u,0u,65545u,4283190348u,0u},{236916547u,0u,8u,4283190348u,1u},{236916255u,0u,1u,4283190348u,0u},{236916239u,0u,1u,4283190348u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {138,1,7,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,-1.f/150},
+        {{{238030385u,0u,65537u,4293584324u,0u},{236916463u,0u,1u,4293584324u,0u},{236916239u,0u,1u,4293584324u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {66,1,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,1.f/150},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {138,1,7,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,7.f/480},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {237,1,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,1.f/48},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {543,3,1,{{{4.f,0.f,0.f},{0.f,4.f,0.f},{5.195805073f,-2.999798298f,0.f},{2.999798298f,5.195805073f,0.f}}},
+        {-1.f/600,1.f/300,0,1.f/100},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916544u,0u,8u,4278190080u,0u},{236916515u,0u,8u,4278190080u,0u},{250547727u,0u,65537u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},2},
+    // Zora keyboard room: the captured 600-frame cycle wraps by whole texture periods.
+    {966,3,1,{{{0.8659675121f,0.499966383f,0.f},{-0.499966383f,0.8659675121f,0.f},{1.879287601f,-0.6840041876f,0.f},{0.6840041876f,1.879287601f,0.f}}},
+        {1.f/600,-1.f/600,0,-1.f/300},
+        {{{238030403u,0u,65545u,4280495405u,0u},{236916547u,0u,8u,4280495405u,1u},{236916255u,0u,1u,4280495405u,0u},{236916239u,0u,1u,4280495405u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},6,false,{1,1,0,2}},
+    {168,1,7,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,1.f/40},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},6,false,{0,15}},
+    {507,3,1,{{{3.f,0.f,0.f},{0.f,3.f,0.f},{3.863444567f,-1.035207629f,0.f},{1.035207629f,3.863444567f,0.f}}},
+        {0,1.f/100,0,1.f/150},
+        {{{238030403u,0u,65537u,4278982937u,0u},{236916291u,0u,9u,4278982937u,0u},{236916689u,0u,8u,4278982937u,0u},{236916515u,4u,8u,4278982937u,0u},{236916239u,0u,1u,4278982937u,2u},{268374015u,0u,0u,4294967295u,0u}}},{},6,false,{0,6,0,4}},
+    {2151,3,1,{{{2.f,0.f,0.f},{0.f,2.f,0.f},{2.818931341f,-1.026006222f,0.f},{1.026006222f,2.818931341f,0.f}}},
+        {0,1.f/50,0,3.f/200},
+        {{{238030403u,0u,65537u,4281545548u,0u},{236916291u,0u,9u,4281545548u,0u},{236916689u,0u,8u,4281545548u,0u},{236916239u,0u,1u,4281545548u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},2,false,{0,12,0,9}},
+    {288,1,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,3.f/100},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},6,false,{0,18}},
+    {240,1,1,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,1.f/30},
+        {{{238030385u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},6,false,{0,20}},
+    {156,1,7,{{{1.f,0.f,0.f},{0.f,1.f,0.f}}},
+        {0,-1.f/75},
+        {{{238030385u,0u,65537u,4293584324u,0u},{236916463u,0u,1u,4293584324u,0u},{236916239u,0u,1u,4293584324u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},6,false,{0,8}},
+    // Rotating vortex cap: scale-two/four layers share angle and linked scroll.
+    {240,3,7,{},{},
+        {{{238030385u,0u,65537u,4278190080u,0u},{250547791u,0u,65537u,4278190080u,0u},{236916239u,0u,1u,4278190080u,2u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}},{},6,true},
 };
 inline unsigned Rows(unsigned kind) {return Patterns[kind].mask==1?2:Patterns[kind].mask==3?4:6;}
+inline double VortexPhase(const Values& v) {return v[0][3]+.5*(v[0][0]+v[0][1])-1.;}
+inline bool VortexUV(const Values& v) {
+    for(unsigned r=0;r<4;++r)for(float f:v[r])if(!std::isfinite(f))return false;
+    if(std::abs(v[0][0]*v[0][0]+v[0][1]*v[0][1]-4)>.002 ||
+       std::abs(v[1][0]+v[0][1])>1e-5 || std::abs(v[1][1]-v[0][0])>1e-5)return false;
+    for(unsigned r=0;r<4;++r)if(std::abs(v[r][2])>1e-6)return false;
+    for(unsigned r=0;r<2;++r)for(unsigned c=0;c<2;++c)
+        if(std::abs(v[r+2][c]-2*v[r][c])>1e-5)return false;
+    return std::abs(v[1][3]+.5*(v[1][0]+v[1][1])-1)<.00001 &&
+        std::abs(v[2][3]+.5*(v[2][0]+v[2][1])-2)<.00001 &&
+        std::abs(v[3][3]+.5*(v[3][0]+v[3][1])-2-2*VortexPhase(v))<.00002;
+}
+inline std::optional<Values> VortexHalf(const Values& a,const Values& b) {
+    if(!VortexUV(a) || !VortexUV(b))return {};
+    constexpr double pi=3.141592653589793;
+    const double angle=std::atan2(b[1][0],b[0][0]);
+    const double turn=std::remainder(angle-std::atan2(a[1][0],a[0][0]),2*pi);
+    const double step=VortexPhase(b)-VortexPhase(a);
+    const bool still=std::abs(turn)<1e-6 && std::abs(step)<1e-6;
+    if(!still && (std::abs(turn+pi/150)>.0001 || std::abs(step-1./300)>.00001))return {};
+    if(still)return b;
+    const double theta=angle-turn*.5,phase=VortexPhase(b)-step*.5;
+    auto half=b;
+    for(unsigned layer=0;layer<2;++layer) {
+        const float scale=layer?4:2,c=scale*std::cos(theta),s=scale*std::sin(theta);
+        half[layer*2]={c,-s,0,scale*.5f-.5f*(c-s)+float(layer?0:phase)};
+        half[layer*2+1]={s,c,0,scale*.5f-.5f*(s+c)+float(layer?2*phase:0)};
+    }
+    return half;
+}
+inline bool MatchesUV(unsigned kind,const Values& v) {
+    if(kind>=std::size(Patterns))return false;
+    const auto& p=Patterns[kind];
+    if(p.rotating)return VortexUV(v);
+    for(unsigned r=0;r<Rows(kind);++r)for(unsigned c=0;c<4;++c)
+        if(!std::isfinite(v[r][c]) || (c!=3 && std::abs(v[r][c]-p.basis[r][c])>=1e-5f))return false;
+    return true;
+}
 inline std::optional<unsigned> Identify(unsigned vertices,unsigned mask,const Values& v) {
     for(unsigned kind=0;kind<std::size(Patterns);++kind) {
         const auto& p=Patterns[kind];
         if(vertices!=p.vertices || mask!=p.mask)continue;
-        bool valid=true;
-        for(unsigned r=0;r<Rows(kind);++r)for(unsigned c=0;c<4;++c)
-            valid &= std::isfinite(v[r][c]) && (c==3 || std::abs(v[r][c]-p.basis[r][c])<1e-5f);
-        if(valid)return kind;
+        if(MatchesUV(kind,v))return kind;
     }
     return {};
 }
 inline bool MatchesMaterial(unsigned kind,unsigned source,unsigned destination,bool depth_write,Tev tev) {
-    if(kind>=std::size(Patterns) || source!=6 || destination!=Patterns[kind].destination || depth_write)return false;
+    if(kind>=std::size(Patterns) || source!=Patterns[kind].source || destination!=Patterns[kind].destination || depth_write)return false;
     for(auto& stage:tev)stage[3]|=0xff000000;
     return tev==Patterns[kind].material;
+}
+// Equal-size water meshes can have the same UV basis but different materials.
+// Select using both, rather than stopping at the first structural candidate.
+inline std::optional<unsigned> IdentifyMaterial(unsigned vertices,unsigned mask,const Values& v,
+                                               unsigned source,unsigned destination,bool depth_write,const Tev& tev) {
+    for(unsigned kind=0;kind<std::size(Patterns);++kind) {
+        const auto& p=Patterns[kind];
+        if(vertices==p.vertices && mask==p.mask && MatchesUV(kind,v) &&
+           MatchesMaterial(kind,source,destination,depth_write,tev))return kind;
+    }
+    return {};
 }
 inline std::optional<Values> Midpoint(unsigned kind,const Values& old,const Values& now) {
     if(kind>=std::size(Patterns))return {};
     const auto& p=Patterns[kind];
-    if(Identify(p.vertices,p.mask,old)!=kind || Identify(p.vertices,p.mask,now)!=kind)return {};
+    if(!MatchesUV(kind,old) || !MatchesUV(kind,now))return {};
+    if(p.rotating)return VortexHalf(old,now);
     auto half=now;bool moving=true,stationary=true,alternate=p.alternate_step!=std::array<float,6>{};
+    std::array<float,6> steps{},alternate_steps{};
     for(unsigned r=0;r<Rows(kind);++r) {
         const float delta=now[r][3]-old[r][3];
-        moving &= std::abs(delta-p.step[r])<1e-5f;
+        // Long-running scroll phases lose low bits when native float values
+        // are accumulated/scaled. Allow rounding in both samples; never
+        // accept a phase reset merely because the absolute phase is large.
+        const float tolerance=std::clamp(2*std::numeric_limits<float>::epsilon()*
+            std::max(std::abs(now[r][3]),std::abs(old[r][3])),1e-5f,5e-5f);
+        const auto unwrap=[&](float expected) {
+            if(p.wrap[r]>0 && std::abs(std::abs(delta-expected)-p.wrap[r])<tolerance)
+                return delta-std::copysign(p.wrap[r],delta-expected);
+            return delta;
+        };
+        steps[r]=unwrap(p.step[r]);alternate_steps[r]=unwrap(p.alternate_step[r]);
+        moving &= std::abs(steps[r]-p.step[r])<tolerance;
         stationary &= std::abs(delta)<1e-6f;
-        alternate &= std::abs(delta-p.alternate_step[r])<1e-5f;
-        half[r][3]=(old[r][3]+now[r][3])*.5f;
+        alternate &= std::abs(alternate_steps[r]-p.alternate_step[r])<tolerance;
     }
+    for(unsigned r=0;r<Rows(kind);++r)
+        half[r][3]=now[r][3]-.5f*(moving?steps[r]:alternate?alternate_steps[r]:0);
     return moving||alternate||stationary?std::optional{half}:std::nullopt;
 }
 }

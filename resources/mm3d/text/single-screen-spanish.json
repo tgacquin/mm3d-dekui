@@ -19,7 +19,8 @@
     {
       "id": "0043",
       "start": "Toca ",
-      "text": "Oprime ZL para mirar.\nOprime {A} para tomar\nuna luminografía."
+      "text": "Oprime ZL para mirar.\nOprime {A} para tomar\nuna luminografía.",
+      "stick_click_text": "Oprime el stick derecho\npara mirar y {A} para tomar\nuna luminografía."
     },
     {
       "id": "0078",
@@ -49,12 +50,14 @@
     {
       "id": "026b",
       "start": "También puedes",
-      "text": "Para las casillas I y II,\nmantén ZR y oprime {X} o {Y}\npara asignar un objeto."
+      "text": "Para las casillas I y II,\nmantén ZR y oprime {X} o {Y}\npara asignar un objeto.",
+      "stick_click_text": "Para la casilla I, oprime ZL.\nPara la casilla II, oprime ZR."
     },
     {
       "id": "026b",
       "start": "Una vez que hayas",
-      "text": "Usa el mismo botón o\ncombinación para utilizar\nel objeto. ¡Es fácil!"
+      "text": "Usa el mismo botón o\ncombinación para utilizar\nel objeto. ¡Es fácil!",
+      "stick_click_text": "Oprime el mismo botón para\nutilizar el objeto. ¡Es fácil!"
     },
     {
       "id": "0270",
@@ -84,7 +87,8 @@
     {
       "id": "1d18",
       "start": "Toque",
-      "text": "{Color:11}El minimapa está abajo\na la derecha. ZR + SELECT\nlo muestra o lo oculta."
+      "text": "{Color:11}El minimapa está abajo\na la derecha. ZR + SELECT\nlo muestra o lo oculta.",
+      "stick_click_text": "{Color:11}El minimapa está abajo a la derecha.\nOprime el stick izquierdo\npara mostrarlo u ocultarlo."
     },
     {
       "id": "1d18",

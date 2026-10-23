@@ -1,6 +1,9 @@
 // Copyright 2026 MM3D presentation contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include <iostream>
+#include "mm3d/ice_particle_interpolation.h"
+#include "mm3d/fire_effect_interpolation.h"
+#include "mm3d/garo_flame_interpolation.h"
 #include "mm3d/splash_interpolation.h"
 #include "mm3d/ripple_interpolation.h"
 #include "mm3d/forest_particle_interpolation.h"
@@ -31,6 +34,7 @@
 #include "mm3d/world_map_interpolation.h"
 #include "mm3d/water_model_interpolation.h"
 #include "mm3d/moving_effect_interpolation.h"
+#include "mm3d/mirror_projection_interpolation.h"
 #include "mm3d/banner_interpolation.h"
 using namespace MM3D::CameraMidpoint;
 void Check(bool value,const char* message) { if(!value)throw std::runtime_error(message); }
@@ -42,8 +46,225 @@ Matrix Camera(double degrees,double x=0) {
 int main() {
  try {
     {
+        namespace M = MM3D::MirrorProjectionInterpolation;
+        const auto projector = [](const Matrix& pose, float alpha) {
+            auto view = InverseRigid(pose);
+            for (unsigned r = 0; r < 2; ++r)
+                for (unsigned c = 0; c < 4; ++c) view[r][c] *= .03;
+            return M::Sample{view, alpha};
+        };
+        const auto a = projector(Camera(0, 100), .4f);
+        const auto b = projector(Camera(20, 104), .8f);
+        const auto expected = projector(Camera(10, 102), .6f);
+        Check(M::Recognized(3, M::Material, a.projection), "mirror receiver material recognized");
+        auto wrong = M::Material; wrong[1][2] ^= 1;
+        Check(!M::Recognized(3, wrong, a.projection), "ordinary wall combiner rejected");
+        Check(!M::Recognized(1, M::Material, a.projection), "inactive projector texture rejected");
+        auto scaled = a; scaled.projection[0][0] *= 2;
+        Check(!M::Recognized(3, M::Material, scaled.projection), "different projector scale rejected");
+        auto colored = M::Material; colored[2][3] = 0x80ffffff;
+        Check(M::Recognized(3, colored, a.projection), "mirror brightness may vary");
+        colored[2][3] ^= 1;
+        Check(!M::Recognized(3, colored, a.projection), "different reflected-light color rejected");
+        const auto half = M::Half(a, b);
+        Check(half && Near(half->projection, expected.projection, 1e-6) &&
+              std::abs(half->alpha - .6f) < 1e-6, "projector rotates around halfway origin and fades");
+        // A point on the halfway projector's central ray must remain centered.
+        // Interpolating only UV offsets or the view translation breaks this.
+        const auto pose = Camera(10, 102);
+        std::array<double, 4> point{pose[0][3] + pose[0][2] * 50,
+            pose[1][3] + pose[1][2] * 50, pose[2][3] + pose[2][2] * 50, 1};
+        for (unsigned r = 0; r < 3; ++r) {
+            double value = 0;
+            for (unsigned c = 0; c < 4; ++c) value += half->projection[r][c] * point[c];
+            Check(std::abs(value - (r == 2 ? 50 : 0)) < 1e-5,
+                  "all three projector rows map the halfway ray correctly");
+        }
+        Check(!M::Half(a, projector(Camera(0, 200), .8f)), "projector teleport rejected");
+        Check(!M::Half(a, projector(Camera(90, 100), .8f)), "projector direction cut rejected");
+        auto invalid = b; invalid.projection[2][3] = std::numeric_limits<double>::quiet_NaN();
+        Check(!M::Half(a, invalid), "invalid projector rejected");
+        M::History history;
+        const M::History::Key key{42, 1};
+        Check(!history.Apply(1, key, a), "projector first frame seeds");
+        Check(history.Apply(2, key, b).has_value(), "projector consecutive frame interpolates");
+        const auto repeated = history.Apply(2, key, b);
+        Check(repeated && Near(repeated->projection, expected.projection, 1e-6),
+              "all receiver meshes reuse the same midpoint");
+        Check(!history.Apply(2, {43, 1}, b), "different texture history isolated");
+        Check(!history.Apply(2, {42, 2}, b), "different scene generation isolated");
+        Check(!history.Apply(4, key, a), "missing projector frame resets history");
+        Check(!history.Apply(4, key, b), "multiple projectors sharing a texture rejected");
+        Check(!history.Apply(5, key, b), "ambiguous projector does not seed a midpoint");
+        history.Reset();
+        Check(!history.Apply(6, key, b), "explicit projector reset seeds afresh");
+    }
+    {
+        namespace L=MM3D::LinkInterpolation;
+        using namespace MM3D::LinkPoseMath;
+        const auto jelly=[](unsigned instance,bool large,const Matrix& world,const Matrix& camera=Identity()) {
+            MM3D::LinkPoseCapture::LivePose p;
+            p.pose.instance=instance;p.model=large?instance:1;
+            p.signature=large?0xe4e4b9a66b715b85ull:0xb7bb8c8a4e2368b2ull;
+            p.words=large?std::vector<std::uint32_t>{0xffff0000}:std::vector<std::uint32_t>{0xffff0000,1,2};
+            p.bind.assign(p.words.size(),Flatten(Identity()));
+            p.pose.bones.assign(p.words.size(),Flatten(Multiply(InverseRigid(camera),world)));
+            return p;
+        };
+        const auto palette=[](const auto& pose) {
+            L::Palette p;p.fill(Camera(0,99999));p[0]=Expand(pose.pose.bones[0]);return p;
+        };
+        auto a=jelly(1,false,Camera(0,0)),b=jelly(2,false,Camera(0,100));
+        Check(L::GekkoJellySkeleton(a)==L::GekkoJellyKind::Small,"three coincident Gekko jelly bones recognized");
+        L::History h;
+        Check(!h.Apply(1,0,Identity(),palette(a),{a,b},true,216)[0],"Gekko jelly first frame seeds");
+        // Addresses swap while each physical jelly moves ten units. Transform
+        // both the capture and palette into a different camera's view space.
+        const auto camera=Camera(20,50);
+        auto a2=jelly(2,false,Camera(10,10),camera),b2=jelly(1,false,Camera(-10,90),camera);
+        const auto native=palette(a2);
+        auto half=h.Apply(2,33,camera,native,{b2,a2},true,216);
+        Check(half[0] && Near(Multiply(camera,*half[0]),Camera(5,5),.001),"Gekko jelly follows world motion across swapped sorted slots");
+        auto other=h.Apply(2,33,camera,palette(b2),{b2,a2},true,216);
+        Check(other[0] && Near(Multiply(camera,*other[0]),Camera(-5,95),.001),"second Gekko jelly keeps independent identity");
+        Check(native==palette(a2) && !half[1],"only jelly midpoint slot zero changes, native palette untouched");
+        Check(h.Apply(2,33,camera,native,{b2,a2},true,216)==half,"both small-jelly surfaces share midpoint");
+        Check(!h.Apply(2,33,camera,native,{b2,a2},false,216)[0],"disabled jelly interpolation stays native");
+        Check(!h.Apply(4,99,camera,native,{b2,a2},true,216)[0],"jelly frame gap reseeds");
+        h.Reset();Check(!h.Apply(5,132,camera,native,{b2,a2},true,216)[0],"jelly history reset clears midpoint");
+        auto wrong=a;wrong.words[2]=0x1002;
+        Check(!L::GekkoJellySkeleton(wrong),"unexpected jelly topology excluded");
+        wrong=a;wrong.bind[2][3]=1;
+        Check(!L::GekkoJellySkeleton(wrong),"jelly bind transforms verified");
+        wrong=a;wrong.pose.bones[2][3]=1;
+        Check(!L::GekkoJellySkeleton(wrong),"diverging jelly bone transforms excluded");
+        wrong=a;wrong.signature++;
+        Check(!L::GekkoJellySkeleton(wrong),"unrelated shared-bone skeleton excluded");
+        L::History crossing;
+        crossing.Apply(1,0,Identity(),palette(a),{a,b},true,216);
+        auto center=jelly(3,false,Camera(0,50));
+        Check(!crossing.Apply(2,33,Identity(),palette(center),{center},true,216)[0],"equidistant jelly crossing rejected");
+        L::History spawn;spawn.Apply(1,0,Identity(),palette(a),{a},true,216);
+        auto near=jelly(3,false,Camera(0,10)),far=jelly(4,false,Camera(0,30));
+        Check(!spawn.Apply(2,33,Identity(),palette(far),{far,near},true,216)[0],"reciprocal match prevents two bubbles claiming one predecessor");
+        L::History cut;cut.Apply(1,0,Identity(),palette(a),{a},true,216);
+        auto jump=jelly(1,false,Camera(0,1000));
+        Check(!cut.Apply(2,33,Identity(),palette(jump),{jump},true,216)[0],"jelly teleport rejected");
+        L::History epoch;epoch.Apply(1,0,Identity(),palette(a),{a},true,216);
+        near.generation=1;
+        Check(!epoch.Apply(2,33,Identity(),palette(near),{near},true,216)[0],"jelly generation change reseeds");
+        // The combined jelly's front/back surfaces are one deforming object,
+        // even though all model and instance addresses alternate each frame.
+        auto scale=Identity();scale[0][0]=scale[2][2]=.15;scale[1][1]=.08;
+        auto big0=jelly(10,true,scale),big0back=jelly(11,true,scale);
+        L::History big;
+        Check(!big.Apply(1,0,Identity(),palette(big0),{big0,big0back},true,960)[0],"combined jelly seeds coincident surfaces once");
+        auto moved=scale;moved[0][3]=20;moved[0][1]=.001;
+        auto big1=jelly(12,true,moved),big1back=jelly(13,true,moved);
+        const auto large=big.Apply(2,33,Identity(),palette(big1),{big1,big1back},true,960);
+        const auto expected=L::AffineDeformationHalf(scale,moved);
+        Check(expected && large[0] && Near(*large[0],*expected,1e-5),"combined jelly preserves small shear through model swaps");
+        Check(big.Apply(2,33,Identity(),palette(big1back),{big1,big1back},true,960)==large,"front and back combined-jelly surfaces agree");
+        L::History unrelated;
+        unrelated.Apply(1,0,Identity(),palette(a),{a},true,216);
+        Check(!unrelated.Apply(2,33,Identity(),palette(big1),{big1},true,960)[0],"small and combined jelly histories cannot cross-match");
+        L::GekkoJellyHistory bounded;std::vector<MM3D::LinkPoseCapture::LivePose> crowd;
+        for(unsigned i=0;i<33;++i)crowd.push_back(jelly(i,false,Camera(0,i*20)));
+        Check(!bounded.Apply(1,0,Identity(),crowd[0],crowd,true),"jelly pool capacity is bounded");
+        Check(!bounded.Apply(2,33,Identity(),a,{a},true),"pool overflow resets history");
+    }
+    {
+        namespace F=MM3D::FireEffectInterpolation;
+        const auto values=[](unsigned kind,float phase) {
+            F::Values uv{};const auto& p=F::Patterns[kind];
+            for(unsigned r=0;r<F::ActiveRows(kind);++r) {
+                uv[r][r%2]=p.basis[r];uv[r][3]=p.multipliers[r]*phase;
+            }
+            return uv;
+        };
+        for(unsigned kind=0;kind<std::size(F::Patterns);++kind) {
+            const auto& p=F::Patterns[kind];auto a=values(kind,.25f),b=values(kind,.25f+p.step);
+            Check(F::Identify(p.vertices,p.mask,6,p.destination,false,a,p.material)==kind,"fire material and UV recognized");
+            auto bad=p.material;bad[0][0]^=1;
+            Check(!F::Identify(p.vertices,p.mask,6,p.destination,false,a,bad),"unrelated fire material excluded");
+            Check(!F::Identify(p.vertices+1,p.mask,6,p.destination,false,a,p.material),"fire mesh count verified");
+            Check(!F::Identify(p.vertices,p.mask,6,p.destination,true,a,p.material),"depth writing draw excluded");
+            if(kind==0){a[5][1]=1.2f;b[5][1]=1.3f;}
+            F::History h;F::Key key{1,2,3,4,kind};
+            Check(!h.Apply(1,key,a,true),"fire UV first frame seeds");
+            const auto half=h.Apply(2,key,b,true);
+            Check(half.has_value(),"fire scroll interpolates consecutive frames");
+            for(unsigned r=0;r<F::ActiveRows(kind);++r)
+                Check(std::abs((*half)[r][3]-(a[r][3]+b[r][3])*.5f)<1e-5,"all fire texture layers share midpoint phase");
+            if(kind==0)Check(std::abs((*half)[5][1]-1.25f)<1e-6,"fire ring pulse scale interpolates too");
+            Check(h.Apply(2,key,b,true)==half,"repeated fire mesh shares midpoint");
+            Check(!h.Apply(2,key,b,false),"native preview suppresses fire overrides");
+            if(F::ActiveRows(kind)==4) {
+                auto stale=b;stale[5]={4,5,6,7};const auto out=h.Apply(2,key,stale,true);
+                Check(out && (*out)[5]==stale[5],"unused fire UV rows retain current draw values");
+            }
+            Check(!h.Apply(4,key,b,true),"fire frame gap reseeds");
+            auto next=values(kind,.25f+2*p.step);
+            auto changed_key=key;changed_key[3]++;
+            Check(!h.Apply(5,changed_key,next,true),"fire scene generation isolates history");
+            h.Reset();Check(!h.Apply(6,key,b,true),"fire reset clears history");
+            const auto wrap=F::Midpoint(kind,values(kind,1-p.step),values(kind,0));
+            Check(wrap && std::abs(*F::Phase(kind,*wrap)-(1-p.step*.5f))<1e-5,"linked fire layers wrap together");
+            Check(!F::Midpoint(kind,a,values(kind,.8f)),"fire unexpected phase jump stays native");
+            auto malformed=b;malformed[0][2]=.01f;
+            Check(!F::Phase(kind,malformed),"fire UV shear rejected");
+            malformed=b;malformed[0][3]=std::numeric_limits<float>::quiet_NaN();
+            Check(!F::Phase(kind,malformed),"fire nonfinite UV rejected");
+            F::History conflict;conflict.Apply(1,key,a,true);conflict.Apply(2,key,b,true);
+            Check(!conflict.Apply(2,key,next,true),"conflicting same-frame fire phase rejected");
+            Check(!conflict.Apply(3,key,next,true),"ambiguous fire frame cannot seed a midpoint");
+        }
+    }
+    {
+        namespace G=MM3D::GaroFlameInterpolation;
+        std::array<G::Vertex,20> inputs{};std::vector<std::uint32_t> order;
+        for(unsigned i=0;i<20;++i) {
+            inputs[i][0]={float(i/2),float(i%2),0,1};
+            inputs[i][1].fill(std::numeric_limits<float>::quiet_NaN());
+            for(unsigned a=2;a<5;++a)inputs[i][a]={float(i/2)/9,float(1-i%2),0,1};
+        }
+        for(unsigned i=0;i<9;++i)for(unsigned n:{2*i,2*i+1,2*i+2,2*i+3,2*i+3,2*i+2})order.push_back(n);
+        const auto decoded=G::Decode(inputs,order);Check(decoded.has_value(),"Garo ribbon topology and unused stale color accepted");
+        auto bad_order=order;bad_order[5]=1;
+        Check(!G::Decode(inputs,bad_order),"broken ribbon connectors rejected");
+        auto bad_inputs=inputs;bad_inputs[0][2][0]=.2f;
+        Check(!G::Decode(bad_inputs,order),"unrelated ribbon UV rejected");
+        bad_inputs=inputs;bad_inputs[0][0][0]=std::numeric_limits<float>::infinity();
+        Check(!G::Decode(bad_inputs,order),"nonfinite ribbon position rejected");
+        const auto shifted=[&](float x){auto r=*decoded;for(auto& p:r.points)p[0]+=x;return r;};
+        const auto a=shifted(0),b=shifted(100),a2=shifted(10),b2=shifted(90);
+        G::Key key{1,2,3,4};G::History h;
+        Check(!h.Apply(1,key,a,Identity()) && !h.Apply(1,key,b,Identity()),"two sword ribbons seed independently");
+        auto hb=h.Apply(2,key,b2,Identity()),ha=h.Apply(2,key,a2,Identity());
+        Check(ha && hb && std::abs(ha->points[0][0]-5)<1e-6 && std::abs(hb->points[0][0]-95)<1e-6,"ribbon identity survives draw order reversal");
+        Check(h.Apply(2,key,a2,Identity())->points==ha->points,"duplicate sword submission reuses midpoint");
+        Check(!h.Apply(2,key,shifted(12),Identity()),"previous sword cannot be claimed twice");
+        Check(!h.Apply(4,key,a2,Identity()),"ribbon frame gap reseeds");
+        auto new_key=key;new_key[3]++;
+        Check(!h.Apply(5,new_key,a2,Identity()),"ribbon generation change reseeds");
+        h.Reset();Check(!h.Apply(6,key,a2,Identity()),"ribbon reset clears history");
+        G::History crossing;crossing.Apply(1,key,a,Identity());crossing.Apply(1,key,b,Identity());
+        Check(!crossing.Apply(2,key,shifted(50),Identity()),"equally close swords are ambiguous");
+        G::History jump;jump.Apply(1,key,a,Identity());
+        Check(!jump.Apply(2,key,shifted(1000),Identity()),"teleporting sword stays native");
+        G::History camera;const auto c0=Camera(10,200),c1=Camera(15,210);
+        auto local0=a,local1=a2;
+        local0.points=G::Transform(a.points,MM3D::LinkPoseMath::InverseRigid(c0));
+        local1.points=G::Transform(a2.points,MM3D::LinkPoseMath::InverseRigid(c1));
+        camera.Apply(1,key,local0,c0);const auto half=camera.Apply(2,key,local1,c1);
+        Check(half && G::Distance(G::Transform(half->points,c1),shifted(5).points)<1e-7,"ribbon midpoint excludes camera motion");
+        auto scale=Identity();scale[0][0]=2;
+        Check(!camera.Apply(3,key,local1,scale),"nonrigid ribbon space rejected");
+    }
+    {
         namespace E=MM3D::MovingEffectInterpolation;
         for(unsigned kind=0;kind<std::size(E::Patterns);++kind) {
+            if(E::MirrorLight(kind))continue;
             const auto& pattern=E::Patterns[kind];E::Sample a{},b{};
             a.model=Identity();for(unsigned r=0;r<3;++r)a.model[r][r]=.01;
             if(E::Mirrored(kind))a.model[2][2]*=-1;
@@ -95,16 +316,63 @@ int main() {
         namespace S=MM3D::SongEffectInterpolation;
         for(unsigned kind=0;kind<std::size(C::Patterns);++kind) {
             const auto& p=C::Patterns[kind];C::Values a{},b{};
+            if(p.rotating) {
+                const auto vortex=[](double angle,float phase) {
+                    C::Values v{};
+                    for(unsigned layer=0;layer<2;++layer) {
+                        const float scale=layer?4:2,c=scale*std::cos(angle),s=scale*std::sin(angle);
+                        v[layer*2]={c,-s,0,scale*.5f-.5f*(c-s)+(layer?0:phase)};
+                        v[layer*2+1]={s,c,0,scale*.5f-.5f*(s+c)+(layer?2*phase:0)};
+                    }
+                    return v;
+                };
+                constexpr double pi=3.141592653589793;
+                a=vortex(-pi+.01,1);b=vortex(-pi+.01-pi/150,1+1.f/300);
+                Check(C::Identify(240,3,a)==kind,"rotating vortex material basis recognized");
+                Check(C::MatchesMaterial(kind,6,7,false,p.material),"rotating vortex combiner recognized");
+                S::History h;S::Key key{1,2,3,4,7|(3<<8),240,0};
+                Check(!h.Apply(1,key,a,true,3,kind),"rotating vortex seeds history");
+                const auto half=h.Apply(2,key,b,true,3,kind);
+                const auto expected=vortex(-pi+.01-pi/300,1+1.f/600);
+                Check(half && C::VortexUV(*half),"vortex angle wrapping preserves scale and pivot");
+                if(half)for(unsigned r=0;r<4;++r)for(unsigned c=0;c<4;++c)
+                    Check(std::abs((*half)[r][c]-expected[r][c])<1e-5,"vortex rotation and linked scroll are halfway");
+                b[5]={9,8,7,6};const auto repeat=h.Apply(2,key,b,true,3,kind);
+                Check(repeat && half && (*repeat)[0]==(*half)[0] && (*repeat)[5]==b[5],
+                    "repeated vortex draws retain rotated basis and inactive rows");
+                auto wrong=b;wrong[2][0]+=.1f;
+                Check(!C::Identify(240,3,wrong),"unrelated rotating UV basis rejected");
+                Check(!C::VortexHalf(a,vortex(-pi+.01-pi/150,2)),"vortex phase reset rejected");
+                Check(!h.Apply(4,key,b,true,3,kind),"vortex frame gaps reseed");
+                continue;
+            }
             for(unsigned r=0;r<C::Rows(kind);++r) {
                 for(unsigned c=0;c<3;++c)a[r][c]=p.basis[r][c];
                 a[r][3]=-3;
             }
             b=a;
             for(unsigned r=0;r<C::Rows(kind);++r)b[r][3]+=p.step[r];
-            Check(C::MatchesMaterial(kind,6,p.destination,false,p.material),"coastal water material recognized");
+            if(p.vertices==72 && p.mask==7) {
+                auto large=a,advanced=a;
+                constexpr std::array<float,6> phases{-10.5730343f,2.5f,91.8100586f,1.0058957f,-94.7539902f,-2.1956034f};
+                for(unsigned r=0;r<C::Rows(kind);++r) {
+                    large[r][3]=phases[r];advanced[r][3]=phases[r]+p.step[r];
+                }
+                // Actual native float accumulation can differ by one ULP.
+                advanced[4][3]=large[4][3]-.05001831055f;
+                Check(C::Midpoint(kind,large,advanced).has_value(),"large waterfall phases tolerate native float rounding");
+                advanced[4][3]-=.001f;
+                Check(!C::Midpoint(kind,large,advanced),"rounding allowance still rejects changed scroll rates");
+            }
+            Check(C::MatchesMaterial(kind,p.source,p.destination,false,p.material),"coastal water material recognized");
+            Check(C::IdentifyMaterial(p.vertices,p.mask,a,p.source,p.destination,false,p.material)==kind,
+                "same-size water meshes resolve by full material");
             auto wrong=p.material;wrong[0][2]^=1;
-            Check(!C::MatchesMaterial(kind,6,p.destination,false,wrong),"different combiner rejected");
-            Check(!C::MatchesMaterial(kind,6,p.destination,true,p.material),"opaque geometry excluded");
+            Check(!C::MatchesMaterial(kind,p.source,p.destination,false,wrong),"different combiner rejected");
+            Check(!C::IdentifyMaterial(p.vertices,p.mask,a,p.source,p.destination,false,wrong),
+                "unknown water material does not select an equal-size mesh");
+            Check(!C::MatchesMaterial(kind,p.source,p.destination,true,p.material),"opaque geometry excluded");
+            Check(!C::MatchesMaterial(kind,p.source==6?2:6,p.destination,false,p.material),"different source blend rejected");
             S::History h;S::Key key{1,2,3,4,p.destination|(p.mask<<8),p.vertices,0};
             Check(!h.Apply(1,key,a,true,p.mask,kind),"coastal water seeds history");
             const auto mid=h.Apply(2,key,b,true,p.mask,kind);
@@ -121,6 +389,20 @@ int main() {
             if(p.alternate_step!=std::array<float,6>{}) {
                 auto alternate=a;for(unsigned r=0;r<C::Rows(kind);++r)alternate[r][3]+=p.alternate_step[r];
                 Check(C::Midpoint(kind,a,alternate).has_value(),"shared water mesh accepts both measured speeds");
+            }
+            if(p.wrap!=std::array<float,6>{}) {
+                auto wrapped=b;
+                for(unsigned r=0;r<C::Rows(kind);++r)if(p.wrap[r])
+                    wrapped[r][3]-=std::copysign(p.wrap[r],p.step[r]);
+                const auto loop=C::Midpoint(kind,a,wrapped);
+                Check(loop.has_value(),"captured water cycle wraps smoothly");
+                if(loop)for(unsigned r=0;r<C::Rows(kind);++r)
+                    Check(std::abs((*loop)[r][3]-(wrapped[r][3]-.5f*p.step[r]))<2e-6,
+                        "water wrap follows the short scroll step");
+                for(unsigned r=0;r<C::Rows(kind);++r)if(p.wrap[r]) {
+                    wrapped[r][3]+=.5f*p.wrap[r];break;
+                }
+                Check(!C::Midpoint(kind,a,wrapped),"nonperiodic water phase jump rejected");
             }
             b[0][3]+=1;
             Check(!h.Apply(5,key,b,true,p.mask,kind),"coastal phase reset does not streak");
@@ -183,6 +465,50 @@ int main() {
                 Check(!B::Midpoint(kind,b,invalid),"nonfinite water offset rejected");
             }
         }
+    }
+    {
+        using MM3D::WidescreenProbe::LocalLayoutPane;
+        constexpr auto shader=0x9b343fea686d98e0ULL,swizzle=0xac22b79e29209c01ULL;
+        const std::array<float,4> right{301.05f,0,0,20.9f},ry{48.35f,0,20.9f,0};
+        const std::array<float,4> left{-6.6f,0,0,22.8f},ly{78.6f,0,22.8f,0};
+        Check(LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},right,ry),
+              "Schedule detail flash keeps portrait widescreen scaling");
+        Check(LocalLayoutPane(shader,swizzle,6,0,{1,3,0,1},left,ly),
+              "Schedule row flash keeps portrait widescreen scaling");
+        Check(!LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},{0,0,0,400},{0,0,240,0}),
+              "fullscreen fades retain saved widescreen bypass");
+        Check(!LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},{-13.333f,0,0,426.667f},{60,0,27.6f,0}),
+              "full-width solid banners retain their rule");
+        Check(!LocalLayoutPane(shader,swizzle,6,1,{0,3,0,1},right,ry)&&
+              !LocalLayoutPane(shader,swizzle,12,0,{0,3,0,1},right,ry)&&
+              !LocalLayoutPane(shader+1,swizzle,6,0,{0,3,0,1},right,ry),
+              "textured draws, batches and world shaders are excluded");
+        using MM3D::WidescreenProbe::PhotoFrameBatch;
+        std::array<std::array<float,4>,96> photo{};
+        const auto row=[&](unsigned i){return photo.at(i);};
+        for(unsigned panes:{1u,2u})for(unsigned color_base:{60u,91u,92u})
+            for(float scale:{.45f,.5f,.8f,.9f,.95f,1.f,1.2f})for(float alpha:{0.f,.3f,.75f,1.f}) {
+            photo={};const unsigned frame=10+4*(panes-1);
+            photo[10]={0,3,0,-95};photo[11]={-13.333f,0,0,426.667f};photo[12]={0,0,240,0};
+            photo[95]={alpha*.5f,0,0,0};
+            photo[frame]={0,3,0,float(color_base)};
+            photo[frame+1]={-20,0,0,207.5f*16/15*scale};photo[frame+2]={25,0,128*scale,0};
+            photo[color_base]={alpha,1,1,1};
+            photo[color_base+1]={alpha,214.f/255,215.f/255,211.f/255};
+            photo[color_base+2]={alpha,142.f/255,147.f/255,134.f/255};
+            photo[color_base+3]={alpha,100.f/255,106.f/255,87.f/255};
+            if(panes==2 && color_base==92)continue; // The backdrop needs a separate color register.
+            Check(PhotoFrameBatch(shader,swizzle,panes*6,0,row),
+                "photo viewer/animation keeps correction across packing, opacity, scale and position");
+            photo[color_base+1][2]=0;
+            Check(!PhotoFrameBatch(shader,swizzle,panes*6,0,row),"unrelated gradient retains fullscreen rule");
+        }
+        photo={};photo[10]={0,3,0,-95};photo[11]={0,0,0,426.667f};photo[12]={0,0,240,0};
+        photo[95]={.5f,0,0,0};
+        Check(!PhotoFrameBatch(shader,swizzle,6,0,row),"fullscreen fade alone retains fullscreen rule");
+        auto invalid=right;invalid[0]=std::numeric_limits<float>::quiet_NaN();
+        Check(!LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},invalid,ry),
+              "invalid pane bounds are rejected");
     }
     {
         namespace B=MM3D::BannerInterpolation;
@@ -812,6 +1138,85 @@ int main() {
             }
             return v;
         };
+        B::Tev tev{{{249564899,0,0,0,2},{250482430,0,1,6577716,0},
+            {249564976,0,8,0,0},{268374015,0,0,0xffffffff,0},
+            {268374015,0,0,0xffffffff,0},{268374015,0,0,0xffffffff,0}}};
+        Check(B::Material(tev),"swimming bubble material recognized");
+        tev[1][3]=12345;Check(B::Material(tev),"bubble lighting may change");
+        tev[2][1]=32;Check(!B::Material(tev),"different particle material excluded");
+        B::Tev pop_tev{{{238030384,32,65544,6579455,0},
+            {268374015,0,0,0xffffffff,0},{268374015,0,0,0xffffffff,0},
+            {268374015,0,0,0xffffffff,0},{268374015,0,0,0xffffffff,0},
+            {268374015,0,0,0xffffffff,0}}};
+        Check(B::PopMaterial(pop_tev),"Wart pop material recognized");
+        pop_tev[0][1]=0;Check(!B::PopMaterial(pop_tev),"other translucent material rejected");
+        auto pop_a=make(0,15,0),pop_b=make(8.3f,15,1);
+        for(unsigned k=0;k<4;++k) {
+            pop_a[k][1]={0,155.f/255,155.f/255,.8f};
+            pop_b[k][1]={0,155.f/255,155.f/255,.76f};
+        }
+        Check(!B::Decode(pop_a,order),"fading bubbles require verified pop material");
+        const auto pa=B::Decode(pop_a,order,true),pb=B::Decode(pop_b,order,true);
+        Check(pa && pb,"cyan fading pop bubbles decode");
+        B::History pop;pop.Apply(1,{9,0},*pa,true);
+        const auto pm=pop.Apply(2,{9,0},*pb,true);
+        Check(pm && std::abs(B::Center(pm->front())[0]-4.15f)<1e-5 &&
+            std::abs(pm->front().vertices[0][1][3]-.78f)<1e-5,
+            "Wart pop motion and fade interpolate together");
+        Check(pm && pm->front().vertices[0][2]==pb->front().vertices[0][2],
+            "Wart pop atlas tile stays native");
+        pop_a[0][1][0]=1;Check(!B::Decode(pop_a,order,true),"unrelated tinted sprites rejected");
+        const auto swim_a=B::Decode(make(0,2.4f,0),order);
+        const auto swim_b=B::Decode(make(12,2.4f,1),order);
+        Check(B::SwimmingBatch(*swim_a),"small swimming bubbles recognized");
+        B::History swimming;const B::Key swim_key{3,4};
+        swimming.Apply(1,swim_key,*swim_a,true);
+        const auto swim_half=swimming.Apply(2,swim_key,*swim_b,true);
+        Check(swim_half && std::abs(B::Center(swim_half->front())[0]-6)<1e-5,
+            "fast stable-size swimming bubble gets midpoint");
+        Check(swim_half && swim_half->front().vertices[0][2]==swim_b->front().vertices[0][2],
+            "swimming bubble keeps current atlas tile");
+        Check(!B::Compatible(swim_a->front(),swim_b->front()),"ordinary bubble motion bound unchanged");
+        const auto newborn=B::Decode(make(12,2.48f,1),order);
+        Check(!B::Compatible(swim_a->front(),newborn->front(),true),"different random size cannot inherit swimming history");
+        const auto teleported=B::Decode(make(20,2.4f,1),order);
+        Check(!B::Compatible(swim_a->front(),teleported->front(),true),"distant swimming bubble remains native");
+        auto ambiguous=*swim_a;auto neighbor=swim_a->front();
+        for(auto& v:neighbor.vertices)v[0][0]+=1;
+        ambiguous.push_back(neighbor);swimming.Reset();swimming.Apply(1,swim_key,ambiguous,true);
+        Check(!swimming.Apply(2,swim_key,*swim_b,true),"ambiguous equal-size swimming bubbles remain native");
+        swimming.Reset();swimming.Apply(1,swim_key,*swim_a,true);
+        Check(!swimming.Apply(3,swim_key,*swim_b,true),"swimming frame gaps reseed");
+        Check(!swimming.Apply(4,swim_key,*swim_b,false),"bubble matching mode changes reseed");
+        const auto dense=[&](unsigned count,float x) {
+            std::vector<B::Vertex> inputs;
+            std::vector<std::uint32_t> strip;
+            for(unsigned i=0;i<count;++i) {
+                const auto quad=make(x+i*40,2.4f,i%2);
+                inputs.insert(inputs.end(),quad.begin(),quad.begin()+4);
+                for(unsigned index:{0u,1u,2u,3u,3u,4u})strip.push_back(i*4+index);
+            }
+            inputs.emplace_back();return B::Decode(inputs,strip);
+        };
+        for(unsigned count:{64u,79u,100u,128u}) {
+            const auto before=dense(count,0),after=dense(count,12);
+            Check(before && after && before->size()==count,"dense swimming strip decodes within capacity");
+            if(!before || !after)continue;
+            B::History dense_history;
+            Check(!dense_history.Apply(1,swim_key,*before,true),"dense trail seeds history");
+            const auto middle=dense_history.Apply(2,swim_key,*after,true);
+            Check(middle && middle->size()==count,"dense trail retains every bubble");
+            if(middle)for(unsigned i=0;i<count;++i)
+                Check(std::abs(B::Center((*middle)[i])[0]-(i*40+6))<.001f,
+                    "every dense swimming bubble moves halfway");
+            const auto repeated=dense_history.Apply(2,swim_key,*after,true);
+            Check(repeated && middle && B::Same(repeated->back(),middle->back()),
+                "dense repeated submissions preserve the last bubble midpoint");
+            Check(!dense_history.Apply(4,swim_key,*after,true),"dense trail gap reseeds");
+        }
+        Check(!dense(129,0),"oversized bubble strip remains rejected");
+        std::vector<B::Quad> too_many(129,swim_a->front());
+        Check(!swimming.Apply(5,swim_key,too_many,true),"bubble history capacity remains bounded");
         const auto a=B::Decode(make(0,5,0),order),b=B::Decode(make(2,5.2f,1),order);
         Check(a && b,"underwater bubble atlas recognized");
         B::History h;const B::Key key{1,2};
@@ -1242,6 +1647,107 @@ int main() {
     }
 
     {
+        namespace E=MM3D::MovingEffectInterpolation;
+        const auto uv=[](unsigned kind,double theta,float scroll) {
+            E::Values v{};
+            const auto rotation=[&](unsigned row,double angle) {
+                const float c=2*std::cos(angle),s=2*std::sin(angle);
+                v[row]={c,-s,0,1.f-.5f*(c-s)};v[row+1]={s,c,0,1.f-.5f*(s+c)};
+            };
+            if(kind==6) {
+                v[0]={3,0,0,-scroll*3};v[1]={0,1,0,0};v[2]={4,0,0,scroll*4};v[3]={0,1,0,0};rotation(4,theta);
+            } else {rotation(0,theta);rotation(2,-theta);v[4]={2,0,0,0};v[5]={0,2,0,0};}
+            return v;
+        };
+        for(unsigned kind:{6u,7u,8u}) {
+            constexpr double step=3.141592653589793/240;
+            const auto& pattern=E::Patterns[kind];E::Sample a{},b{};
+            a.model=Identity();b.model=Camera(0,2);
+            a.uv=uv(kind,3.14,0);b.uv=uv(kind,3.14+step,1.f/120);
+            Check(E::Identify(pattern.vertices,pattern.mask,a.uv,pattern.material)==kind,"mirror material and UV animation recognized");
+            auto mid=E::Midpoint(kind,a,b);
+            Check(mid && E::MirrorUV(kind,mid->uv),"mirror midpoint retains texture scale and pivot");
+            auto expected=uv(kind,3.14+step*.5,1.f/240);
+            if(mid)for(unsigned r=0;r<6;++r)for(unsigned c=0;c<4;++c)
+                Check(std::abs(mid->uv[r][c]-expected[r][c])<1e-5,"mirror rotation wraps through pi without jumping");
+            auto bad=b;bad.uv=uv(kind,3.14+.3,1.f/120);
+            Check(!E::Midpoint(kind,a,bad),"mirror animation reset rejected");
+            bad=b;bad.uv[0][0]=std::numeric_limits<float>::quiet_NaN();
+            Check(!E::Midpoint(kind,a,bad),"nonfinite mirror UV rejected");
+        }
+    }
+
+    {
+        namespace I=MM3D::IceParticleInterpolation;
+        const auto particle=[](float x,float size,float alpha,int tile,I::Kind kind) {
+            std::vector<I::Vertex> v(5);
+            for(unsigned k=0;k<4;++k) {
+                v[k][0]={x+(k/2-.5f)*size,(1-k%2-.5f)*size,0,1};
+                v[k][1]=kind==I::Kind::Breath?std::array<float,4>{120.f/255,96.f/255,48.f/255,alpha}:
+                    kind==I::Kind::FreezeMist?std::array<float,4>{-.1476354897f,-.0430603027f,-.0430603027f,alpha}:
+                    kind==I::Kind::FreezeShard?std::array<float,4>{1,1,1,alpha}:
+                    std::array<float,4>{105.f/255,105.f/255,105.f/255,alpha};
+                v[k][2]=I::Atlas(kind)?std::array<float,4>{(tile%4+k/2)*.25f,1-(tile/4+k%2)*.25f,0,1}:
+                    kind==I::Kind::FreezeShard?std::array<float,4>{float(k/2),float(1-k%2),0,1}:
+                    std::array<float,4>{(tile+k/2)*.5f,float(1-k%2),0,1};
+            }
+            return v;
+        };
+        const std::vector<std::uint32_t> order{0,1,2,3,3,4};
+        for(auto kind:{I::Kind::Breath,I::Kind::Pop}) {
+            const float size=kind==I::Kind::Breath?50:12;
+            const int old_tile=kind==I::Kind::Breath?15:1,new_tile=kind==I::Kind::Breath?0:1;
+            auto a=I::Decode(particle(0,size,.8f,old_tile,kind),order,kind);
+            auto b=I::Decode(particle(2,size,.775f,new_tile,kind),order,kind);
+            Check(a && b,"captured breath/pop geometry recognized");
+            I::History h;
+            Check(!h.Apply(1,1,0,kind,*a),"particle birth seeds history");
+            auto mid=h.Apply(2,1,0,kind,*b);
+            Check(mid && std::abs(I::Center(mid->front())[0]-1)<.001f,"particle translation interpolated");
+            Check(mid && std::abs(mid->front().vertices[0][1][3]-.7875f)<.001f,"particle fade interpolated");
+            Check(mid && mid->front().vertices[0][2]==b->front().vertices[0][2],"atlas wrap retains native tile");
+            Check(!h.Apply(4,1,0,kind,*b),"particle capture gap reseeds");
+            Check(!h.Apply(5,1,1,kind,*b),"particle scene generation reseeds");
+            auto bad=particle(0,size,.8f,old_tile,kind);bad[1][1][0]+=.1f;
+            Check(!I::Decode(bad,order,kind),"unrelated particle color rejected");
+            auto spawned=*b;spawned[0].vertices[0][1][3]=.1f;
+            Check(!I::Compatible(spawned[0],a->front(),kind),"particle lifetime restart rejected");
+        }
+        for(auto kind:{I::Kind::FreezeMist,I::Kind::FreezeShard}) {
+            const float size=kind==I::Kind::FreezeMist?78.08f:5.2f;
+            const float old_alpha=kind==I::Kind::FreezeMist?.2f:1.f;
+            const float alpha=kind==I::Kind::FreezeMist?.22745f:1.f;
+            const auto a=I::Decode(particle(0,size,old_alpha,15,kind),order,kind);
+            const auto b=I::Decode(particle(2,size,alpha,0,kind),order,kind);
+            Check(a && b,"freezing mist and square ice fragments recognized");
+            I::History h;h.Apply(1,1,0,kind,*a);auto mid=h.Apply(2,1,0,kind,*b);
+            Check(mid && std::abs(I::Center(mid->front())[0]-1)<.001f,"freezing particles get intermediate positions");
+            Check(mid && std::abs(mid->front().vertices[0][1][3]-(alpha+old_alpha)*.5f)<.00001f,
+                "freezing mist opacity interpolates");
+            Check(mid && mid->front().vertices[0][1][0]==b->front().vertices[0][1][0],
+                "signed ice mist color offsets stay native");
+            auto wrong=particle(0,size,alpha,0,kind);
+            for(unsigned k=2;k<4;++k)wrong[k][0][0]+=size/6;
+            Check(!I::Decode(wrong,order,kind),"rectangular bomb fragments cannot become ice shards");
+            Check(!h.Apply(4,1,0,kind,*b),"freeze particles do not bridge gaps");
+        }
+        const auto qa=I::Decode(particle(0,50,.8f,4,I::Kind::Breath),order,I::Kind::Breath);
+        const auto qb=I::Decode(particle(100,60,.8f,4,I::Kind::Breath),order,I::Kind::Breath);
+        const auto na=I::Decode(particle(2,50,.8f,5,I::Kind::Breath),order,I::Kind::Breath);
+        const auto nb=I::Decode(particle(102,60,.8f,5,I::Kind::Breath),order,I::Kind::Breath);
+        I::History multiple;
+        multiple.Apply(1,1,0,I::Kind::Breath,*qa);multiple.Apply(1,1,0,I::Kind::Breath,*qb);
+        auto mb=multiple.Apply(2,1,0,I::Kind::Breath,*nb);
+        auto ma=multiple.Apply(2,1,0,I::Kind::Breath,*na);
+        Check(ma && mb,"multiple enemies sharing a material retain both histories");
+        Check(ma && std::abs(I::Center(ma->front())[0]-1)<.001f &&
+            mb && std::abs(I::Center(mb->front())[0]-101)<.001f,"reordered batches keep particle ownership");
+        std::vector<I::Quad> ambiguous{qa->front(),qa->front()};
+        Check(!I::Match(na->front(),ambiguous,I::Kind::Breath,true),"ambiguous particles stay native");
+        I::Tev unrelated{};Check(I::Material(unrelated)==I::Kind::None,"unrelated material rejected");
+    }
+
+    {
         namespace B = MM3D::BurstParticleInterpolation;
         const std::vector<std::uint32_t> order{0,1,2,3,3,4};
         const auto dust = [](float x, float size, int tile, float alpha) {
@@ -1335,6 +1841,33 @@ int main() {
         Check(half && B::Near(B::Center(half->front())[0],1.5f),"blood travels at midpoint");
         Check(half->front().vertices[0][1]==a->front().vertices[0][1] &&
               half->front().vertices[1][1]==a->front().vertices[1][1],"blood corner gradient retained");
+        const auto blue = [&](float x, float alpha) {
+            auto v=dust(x,4,0,alpha);
+            for(unsigned k=0;k<4;++k) {
+                v[k][1]={k==0?alpha*10/255:0,k==0?alpha*10/255:0,
+                    k==0?(32+168*alpha)/255:k==2?(32+96*alpha)/255:(64+64*alpha)/255,alpha};
+                v[k][2]={float(k/2),float(1-k%2),0,1};
+            }
+            return v;
+        };
+        const auto blue_before=B::Decode(blue(0,.5f),order,3,true);
+        const auto blue_after=B::Decode(blue(3,.5f-1.f/24),order,3,true);
+        Check(blue_before && blue_after && blue_after->front().kind==B::Kind::BlueBlood,
+              "blue blood exact corner gradient recognized");
+        Check(!B::Decode(blue(0,.5f),order,3),"blue blood requires captured sprite material");
+        auto wrong_blue=blue(0,.5f);wrong_blue[2][1][2]+=.1f;
+        Check(!B::Decode(wrong_blue,order,3,true),"unrelated blue gradient rejected");
+        Check(!B::Compatible(blue_after->front(),a->front()),"blue and green blood cannot share motion");
+        Check(!B::Compatible(blue_before->front(),blue_after->front()),"blue blood lifetime reset rejected");
+        B::History blue_history;auto blue_key=key;blue_key[4]=unsigned(B::Kind::BlueBlood);
+        blue_history.Apply(1,blue_key,*blue_before);
+        const auto blue_half=blue_history.Apply(2,blue_key,*blue_after);
+        Check(blue_half && B::Near(B::Center(blue_half->front())[0],1.5f) &&
+              B::Near(blue_half->front().vertices[0][1][3],.5f-1.f/48),
+              "blue droplet position and lifetime interpolate");
+        Check(blue_half->front().vertices[0][2]==blue_after->front().vertices[0][2],
+              "blue blood UVs stay native");
+        Check(!blue_history.Apply(4,blue_key,*blue_after),"missing blue blood frame resets history");
         blood[2][1][1]=.75f;
         Check(!B::Decode(blood,order,3),"unrelated green corner pattern rejected");
         std::vector<B::Quad> cloud;
@@ -1354,6 +1887,14 @@ int main() {
         auto matches=B::BloodMatches(expanded,cloud);
         Check(matches && (*matches)[0]==26 && (*matches)[26]==0,
               "expanding blood cloud matches reordered drops without relying on input slots");
+        auto blue_cloud=cloud,blue_expanded=expanded;
+        for(auto* group:{&blue_cloud,&blue_expanded})for(auto& q:*group) {
+            q.kind=B::Kind::BlueBlood;
+            for(auto& v:q.vertices)std::swap(v[1][1],v[1][2]);
+        }
+        const auto blue_matches=B::BloodMatches(blue_expanded,blue_cloud);
+        Check(blue_matches && *blue_matches==*matches,"blue burst matches all 27 reordered droplets");
+        Check(!B::BloodMatches(blue_expanded,cloud),"different blood colors cannot share a burst");
         expanded[0]=expanded[1];
         Check(!B::BloodMatches(expanded,cloud),"changed blood population cannot use expansion matching");
         auto debris=dust(0,6,0,1);
@@ -2246,27 +2787,6 @@ int main() {
         Check(!history.Apply(5,key,uv,true),"portal phase discontinuities stay native");
     }
     {
-        using MM3D::WidescreenProbe::LocalLayoutPane;
-        constexpr auto shader=0x9b343fea686d98e0ULL,swizzle=0xac22b79e29209c01ULL;
-        const std::array<float,4> right{301.05f,0,0,20.9f},ry{48.35f,0,20.9f,0};
-        const std::array<float,4> left{-6.6f,0,0,22.8f},ly{78.6f,0,22.8f,0};
-        Check(LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},right,ry),
-              "Schedule detail flash keeps portrait widescreen scaling");
-        Check(LocalLayoutPane(shader,swizzle,6,0,{1,3,0,1},left,ly),
-              "Schedule row flash keeps portrait widescreen scaling");
-        Check(!LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},{0,0,0,400},{0,0,240,0}),
-              "fullscreen fades retain saved widescreen bypass");
-        Check(!LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},{-13.333f,0,0,426.667f},{60,0,27.6f,0}),
-              "full-width solid banners retain their rule");
-        Check(!LocalLayoutPane(shader,swizzle,6,1,{0,3,0,1},right,ry)&&
-              !LocalLayoutPane(shader,swizzle,12,0,{0,3,0,1},right,ry)&&
-              !LocalLayoutPane(shader+1,swizzle,6,0,{0,3,0,1},right,ry),
-              "textured draws, batches and world shaders are excluded");
-        auto invalid=right;invalid[0]=std::numeric_limits<float>::quiet_NaN();
-        Check(!LocalLayoutPane(shader,swizzle,6,0,{0,3,0,1},invalid,ry),
-              "invalid pane bounds are rejected");
-    }
-    {
         using namespace MM3D::ForestParticleInterpolation;
         const auto sprite=[](float x) {
             std::vector<Vertex> inputs(5);
@@ -2525,6 +3045,41 @@ int main() {
         Check(!disagree.Apply(2,33,Identity(),palette,{sphere,knot},true,vertices)[0],
               "coincident balloon poses with different histories rejected");
     }
+    for(const auto vertices:{144u,600u}) {
+        using namespace MM3D::LinkPoseMath;
+        MM3D::LinkPoseCapture::LivePose target;
+        target.pose.instance=100;target.model=200;target.signature=0x036049aec268c4f9ull;
+        target.pose.bones={Flatten(Camera(0))};target.bind={Flatten(Identity())};
+        target.words={0xffff0000};
+        auto chain=target;chain.pose.instance=101;chain.model=201;chain.signature=0x22fef6cc8a39263cull;
+        MM3D::LinkInterpolation::Palette palette;palette.fill(Camera(0));
+        MM3D::LinkInterpolation::History history;
+        Check(!history.Apply(1,0,Identity(),palette,{target,chain},true,vertices)[0],
+              "Koume target and chain seed separate histories");
+        target.pose.bones={Flatten(Camera(60,4))};chain.pose.bones=target.pose.bones;
+        palette.fill(Expand(target.pose.bones[0]));
+        const auto mid=history.Apply(2,33,Identity(),palette,{chain,target},true,vertices);
+        Check(mid[0] && Near(*mid[0],Camera(30,2),1e-6),"Koume target pair interpolates rotation and translation");
+        Check(!history.Apply(2,33,Identity(),palette,{target,chain},false,vertices)[0],"Koume target comparison stays native");
+        Check(!history.Apply(2,33,Identity(),palette,{target,chain},true,vertices+1)[0],"unverified Koume target material excluded");
+        auto duplicate=chain;duplicate.pose.instance=102;duplicate.model=202;
+        Check(!history.Apply(2,33,Identity(),palette,{target,chain,duplicate},true,vertices)[0],"extra Koume target owner rejected");
+        auto unrelated=chain;unrelated.signature++;
+        Check(!history.Apply(2,33,Identity(),palette,{target,unrelated},true,vertices)[0],"unrelated shared root excluded");
+        auto rebound=chain;rebound.bind[0][3]=1;
+        Check(!history.Apply(2,33,Identity(),palette,{target,rebound},true,vertices)[0],"changed Koume target bind excluded");
+        Check(!history.Apply(4,99,Identity(),palette,{target,chain},true,vertices)[0],"Koume target capture gap reseeds");
+        MM3D::LinkInterpolation::History disagree;
+        target.pose.bones={Flatten(Camera(0))};chain.pose.bones={Flatten(Camera(-60))};
+        palette.fill(Expand(target.pose.bones[0]));
+        disagree.Apply(1,0,Identity(),palette,{target,chain},true,vertices);
+        palette.fill(Expand(chain.pose.bones[0]));
+        disagree.Apply(1,0,Identity(),palette,{target,chain},true,vertices);
+        target.pose.bones={Flatten(Camera(60))};chain.pose.bones=target.pose.bones;
+        palette.fill(Expand(target.pose.bones[0]));
+        Check(!disagree.Apply(2,33,Identity(),palette,{target,chain},true,vertices)[0],
+              "coincident Koume target poses with different histories rejected");
+    }
     {
         using MM3D::BloomSampling::MidpointComposite;
         constexpr auto shader=0x89b1ab98da3d9241ULL,swizzle=0x6f0b398b1fc186a9ULL;
@@ -2566,6 +3121,397 @@ int main() {
         };
         {
             namespace L=MM3D::LinkInterpolation;
+            auto cow=pose(10,9998,0xbd01809703b206e7ull);
+            cow.words={0xffff0000,0x1001,0x11002,0x21003,0x11004,0x1005,0x51006,0x61007,0x71008,0x81009};
+            const std::array<unsigned,10> palette_bones{0,6,5,7,8,9,2,4,1,3};
+            const auto set=[&](LivePose& actor,double x,double shear) {
+                auto root=Camera(0,x);root[0][0]=root[2][2]=.01;root[1][1]=.0101;
+                actor.pose.bones[0]=Flatten(root);
+                for(unsigned i=1;i<10;++i) {
+                    auto local=Camera(0,i>=5?20:10*i);
+                    if(i>=5){local[0][1]=shear;local[1][3]=10;}
+                    actor.pose.bones[i]=Flatten(Multiply(Expand(actor.pose.bones[actor.words[i]>>16]),local));
+                }
+                L::Palette p;
+                for(unsigned i=0;i<10;++i)p[i]=Expand(actor.pose.bones[palette_bones[i]]);
+                return p;
+            };
+            auto other=cow;other.pose.instance++;
+            auto first=set(cow,0,.1),second=set(other,100,.2);
+            L::History history;
+            history.Apply(1,0,Identity(),first,{cow,other},true,2274);
+            history.Apply(1,0,Identity(),second,{cow,other},true,2274);
+            first=set(cow,8,.2);second=set(other,92,.1);
+            const auto native=first;
+            const auto other_mid=history.Apply(2,33,Identity(),second,{other,cow},true,2274);
+            const auto mid=history.Apply(2,33,Identity(),first,{other,cow},true,2274);
+            auto expected_cow=cow,expected_other=other;
+            const auto expected=set(expected_cow,4,.15),expected_second=set(expected_other,96,.15);
+            for(unsigned slot=1;slot<=5;++slot) {
+                Check(mid[slot] && Near(*mid[slot],expected[slot],.0001),
+                    "cow tail preserves local shear and connects all five halfway joints");
+                Check(other_mid[slot] && Near(*other_mid[slot],expected_second[slot],.0001),
+                    "nearby cows retain independent tail histories despite reversed draw order");
+            }
+            Check(first==native,"cow tail interpolation never changes the native palette");
+            auto a=Identity(),b=Identity();a[0][1]=.1;b[0][1]=.2;
+            Check(!Half(a,b),"cow regression exercises shear rejected by ordinary rotation interpolation");
+            const auto forward=L::CowTailHalf(a,b,cow,5),reverse=L::CowTailHalf(b,a,cow,5);
+            Check(forward && reverse && Near(*forward,*reverse,0) && std::abs((*forward)[0][1]-.15)<1e-6,
+                "cow tail shear interpolates symmetrically");
+            Check(!L::CowTailHalf(a,b,cow,4) && !L::CowTailHalf(a,b,cow,10),"cow head and out-of-range joints retain ordinary checks");
+            auto invalid=cow;invalid.signature^=1;
+            Check(!L::CowTailHalf(a,b,invalid,5),"other actors never use cow deformation");
+            invalid=cow;invalid.words[9]=0x71009;
+            Check(!L::CowTailHalf(a,b,invalid,9),"unverified cow hierarchy rejected");
+            auto broken=b;broken[1][1]=0;
+            Check(!L::CowTailHalf(a,broken,cow,5),"collapsed tail stays native");
+            broken=b;broken[0][1]=2;
+            Check(!L::CowTailHalf(a,broken,cow,5),"large tail deformation stays native");
+            broken=b;broken[0][3]=101;
+            Check(!L::CowTailHalf(a,broken,cow,5),"tail teleport stays native");
+            broken=b;broken[0][0]=std::numeric_limits<double>::quiet_NaN();
+            Check(!L::CowTailHalf(a,broken,cow,5),"nonfinite tail stays native");
+            Check(!history.Apply(2,33,Identity(),first,{cow},false,2274)[0],"disabled cow interpolation stays native");
+            Check(!history.Apply(4,99,Identity(),first,{cow},true,2274)[0],"cow frame gap reseeds");
+            cow.generation++;
+            Check(!history.Apply(5,132,Identity(),first,{cow},true,2274)[0],"cow generation change reseeds");
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            auto balloon=pose(9,9999,0xae6056c772fdbd26ull);
+            balloon.words={0xffff0000,0x1001,0x1002,0x21003,0x31004,0x1005,0x51006,0x61007,0x1008};
+            const std::array<unsigned,8> bones{3,4,2,1,8,6,7,5};
+            const auto set=[&](LivePose& actor,double x,double shear,double angle) {
+                actor.pose.bones[0]=Flatten(Camera(0,x));
+                for(unsigned i=1;i<9;++i) {
+                    auto local=Camera(angle,3*i*i);
+                    if(i==1){local=Camera(0,10);local[0][1]=shear;local[1][1]=.86;}
+                    actor.pose.bones[i]=Flatten(Multiply(Expand(actor.pose.bones[actor.words[i]>>16]),local));
+                }
+                L::Palette p;p.fill(Camera(0,10000));
+                for(unsigned i=0;i<bones.size();++i)p[i]=Multiply(Expand(actor.pose.bones[bones[i]]),Expand(actor.bind[bones[i]]));
+                return p;
+            };
+            auto other=balloon;other.pose.instance++;
+            auto first=set(balloon,0,.08,0),second=set(other,100,.16,12);
+            L::History history;
+            history.Apply(1,0,Identity(),first,{balloon,other},true,1350);
+            history.Apply(1,0,Identity(),second,{balloon,other},true,1350);
+            first=set(balloon,8,.16,12);second=set(other,92,.08,0);
+            const auto native=first;
+            const auto other_mid=history.Apply(2,33,Identity(),second,{other,balloon},true,1350);
+            const auto mid=history.Apply(2,33,Identity(),first,{other,balloon},true,1350);
+            auto expected_actor=balloon,expected_other=other;
+            const auto expected=set(expected_actor,4,.12,6),expected_second=set(expected_other,96,.12,6);
+            for(unsigned slot=0;slot<bones.size();++slot) {
+                Check(mid[slot] && Near(*mid[slot],expected[slot],.0001),
+                    "ghost balloon body and dangling limbs interpolate together");
+                Check(other_mid[slot] && Near(*other_mid[slot],expected_second[slot],.0001),
+                    "nearby ghost balloons retain separate histories");
+            }
+            auto crossing=balloon;
+            crossing.bind[2]=Flatten(Camera(0,-12));
+            L::History crossing_history;
+            auto crossing_palette=set(crossing,0,.08,12);
+            crossing_history.Apply(1,0,Identity(),crossing_palette,{crossing},true,1350);
+            crossing_palette=set(crossing,0,.16,0);
+            Check(!L::Identify(crossing_palette[2],crossing),"balloon arm skin coincides with root at crossing");
+            Check(L::GhostBalloonBodyBones(crossing_palette,crossing,1350),"full balloon mesh resolves crossed arm");
+            const auto crossing_mid=crossing_history.Apply(2,33,Identity(),crossing_palette,{crossing},true,1350);
+            auto crossing_expected=crossing;
+            const auto expected_crossing=set(crossing_expected,0,.12,6);
+            Check(crossing_mid[2] && Near(*crossing_mid[2],expected_crossing[2],.0001),
+                "crossing balloon arm follows its own midpoint rather than stationary root");
+            Check(!L::GhostBalloonBodyBones(crossing_palette,crossing,72),"balloon mesh mapping excludes other meshes");
+            crossing_palette[7][0][3]+=10;
+            Check(!L::GhostBalloonBodyBones(crossing_palette,crossing,1350),"partial balloon palette match rejected");
+            Check(first==native,"ghost balloon native palette remains unchanged");
+            const auto repeat=history.Apply(2,33,Identity(),first,{balloon},true,1350);
+            Check(repeat==mid,"repeated balloon draws reuse the same midpoint");
+            auto small=first;small[0]=first[3];small[1]=first[4];
+            const auto small_mid=history.Apply(2,33,Identity(),small,{balloon},true,72);
+            Check(small_mid[0] && Near(*small_mid[0],expected[3],.0001),
+                "separate balloon body meshes share the deforming joint");
+            auto a=Identity(),b=Identity();a[0][1]=.08;b[0][1]=.16;
+            Check(!Half(a,b),"ghost balloon reproduces rejected rigid interpolation");
+            const auto ab=L::GhostBalloonHalf(a,b,balloon,1),ba=L::GhostBalloonHalf(b,a,balloon,1);
+            Check(ab && ba && Near(*ab,*ba,0),"balloon deformation is symmetric");
+            Check(!L::GhostBalloonHalf(a,b,balloon,2),"balloon arms retain rigid interpolation guards");
+            auto invalid=balloon;invalid.signature^=1;
+            Check(!L::GhostBalloonHalf(a,b,invalid,1),"other balloon actors excluded");
+            invalid=balloon;invalid.words[8]=0x11008;
+            Check(!L::GhostBalloonHalf(a,b,invalid,1),"different balloon hierarchy excluded");
+            auto broken=b;broken[1][1]=0;
+            Check(!L::GhostBalloonHalf(a,broken,balloon,1),"collapsed balloon stays native");
+            broken=b;broken[0][1]=2;
+            Check(!L::GhostBalloonHalf(a,broken,balloon,1),"large balloon deformation stays native");
+            broken=b;broken[0][3]=101;
+            Check(!L::GhostBalloonHalf(a,broken,balloon,1),"balloon teleport stays native");
+            broken=b;broken[0][0]=std::numeric_limits<double>::quiet_NaN();
+            Check(!L::GhostBalloonHalf(a,broken,balloon,1),"nonfinite balloon stays native");
+            Check(!history.Apply(2,33,Identity(),first,{balloon},false,1350)[3],"disabled balloon interpolation stays native");
+            Check(!history.Apply(4,99,Identity(),first,{balloon},true,1350)[3],"balloon frame gap reseeds");
+            balloon.generation++;
+            Check(!history.Apply(5,132,Identity(),first,{balloon},true,1350)[3],"balloon generation change reseeds");
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            auto wart=pose(8,10000,0xb4670e8c455fcc2bull);
+            wart.words={0xffff0000,0x1001,0x11002,0x21003,0x11004,0x41005,0x11006,0x61007};
+            const auto set=[&](double x,double stretch) {
+                const std::array<double,8> offsets{0,0,2,4,10,12+stretch,-10,-12-stretch};
+                for(unsigned i=0;i<8;++i)wart.pose.bones[i]=Flatten(Camera(0,x+offsets[i]));
+                L::Palette body;body.fill(Camera(0,10000));
+                for(unsigned i=0;i<3;++i)body[i]=Expand(wart.pose.bones[L::WartBodyPalette[i]]);
+                return body;
+            };
+            auto body=set(0,0);
+            Check(!L::Identify(body[0],wart),"Wart reproduces ambiguous coincident root/body bones");
+            Check(L::WartBodyBones(body,wart,1872),"complete Wart body palette disambiguates ownership");
+            L::History history;
+            Check(!history.Apply(1,0,Identity(),body,{wart},true,1872)[0],"Wart first frame seeds history");
+            body=set(8,4);const auto native=body;
+            L::Palette eye;eye.fill(Camera(0,10000));eye[0]=Expand(wart.pose.bones[3]);
+            auto eye_mid=history.Apply(2,33,Identity(),eye,{wart},true,396);
+            Check(eye_mid[0] && std::abs((*eye_mid[0])[0][3]-8)<1e-6,
+                "Wart eye follows the same halfway root even when drawn before body");
+            const auto mid=history.Apply(2,33,Identity(),body,{wart},true,1872);
+            const std::array<double,3> expected{4,18,-10};
+            for(unsigned i=0;i<3;++i)Check(mid[i] && std::abs((*mid[i])[0][3]-expected[i])<1e-6,
+                "all Wart body branches interpolate through their native hierarchy");
+            Check(body==native,"Wart native palette remains unchanged");
+            const auto repeat=history.Apply(2,34,Identity(),body,{wart},true,1872);
+            for(unsigned i=0;i<3;++i)Check(mid[i] && repeat[i] && Near(*mid[i],*repeat[i],0),
+                "repeated Wart body draws reuse one midpoint");
+            auto invalid=body;invalid[2][0][3]+=1;
+            Check(!L::WartBodyBones(invalid,wart,1872),"all three Wart palette slots must match");
+            Check(!L::WartBodyBones(body,wart,396),"Wart eye does not use the body's skin palette");
+            auto wrong=wart;wrong.signature^=1;
+            Check(!L::WartBodyBones(body,wrong,1872),"unrelated skeleton never uses Wart matching");
+            wrong=wart;wrong.words[7]=0x51007;
+            Check(!L::WartBodyBones(body,wrong,1872),"changed Wart topology rejected");
+            auto duplicate=wart;duplicate.pose.instance++;
+            Check(!history.Apply(2,33,Identity(),body,{wart,duplicate},true,1872)[0],
+                "two possible Wart actors remain ambiguous");
+            Check(!history.Apply(2,33,Identity(),body,{wart},false,1872)[0],"disabled Wart interpolation stays native");
+            wart.generation++;
+            Check(!history.Apply(3,66,Identity(),body,{wart},true,1872)[0],"Wart generation change reseeds");
+            Check(!history.Apply(5,132,Identity(),body,{wart},true,1872)[0],"Wart capture gap reseeds");
+            body=set(300,4);
+            Check(!history.Apply(6,165,Identity(),body,{wart},true,1872)[0],"Wart teleport stays native");
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            auto human=pose(26,10001,100);
+            human.words.assign(MM3D::LinkPoseCapture::BoneWords.begin(),MM3D::LinkPoseCapture::BoneWords.end());
+            for(unsigned i=0;i<26;++i)human.pose.bones[i]=Flatten(Camera(0,i*5));
+            auto flat=Camera(0,4);for(unsigned r=0;r<3;++r)flat[r][1]=0;
+            human.pose.bones[24]=Flatten(flat);
+            L::Palette p;p.fill(Camera(0,10000));p[0]=flat;
+            Check(!L::Identify(flat,human),"generic bone matching still rejects singular matrices");
+            Check(L::BowStringBone(p,human,12),"verified flat bowstring recognized");
+            Check(!L::BowStringBone(p,human,18),"unrelated flat mesh rejected");
+            L::History h;h.Apply(1,0,Identity(),p,{human},true,12);
+            flat=Camera(20,6);for(unsigned r=0;r<3;++r)flat[r][1]=0;
+            human.pose.bones[24]=Flatten(flat);p[0]=flat;
+            auto mid=h.Apply(2,33,Identity(),p,{human},true,12);
+            Check(mid[0] && !Near(*mid[0],flat,1e-5),"flat bowstring gets an intermediate pose");
+            Check(mid[0] && (*mid[0])[0][1]==0 && (*mid[0])[1][1]==0 && (*mid[0])[2][1]==0,
+                "bowstring stays flat at midpoint");
+            Check(!h.Apply(4,99,Identity(),p,{human},true,12)[0],"bowstring disappearance reseeds");
+            auto invalid=flat;invalid[0][0]=std::numeric_limits<double>::quiet_NaN();
+            Check(!L::BowStringHalf(invalid,flat),"nonfinite bowstring rejected");
+            // Release rapidly contracts and reverses the signed string scale;
+            // neither a singular endpoint nor a >2x change is a discontinuity.
+            for(auto scales:std::array<std::array<double,2>,5>{{{0,1},{1,.07},{.07,.00001},{.00001,0},{.07,-.03}}}) {
+                L::History firing;
+                const auto string=[&](double scale) {
+                    auto m=Identity();m[1][1]=scale;
+                    human.pose.bones[24]=Flatten(m);p[0]=m;return m;
+                };
+                string(scales[0]);firing.Apply(1,0,Identity(),p,{human},true,12);
+                const auto current=string(scales[1]);
+                const auto out=firing.Apply(2,33,Identity(),p,{human},true,12);
+                Check(out[0] && std::abs((*out[0])[1][1]-(scales[0]+scales[1])/2)<1e-6,
+                    "firing bowstring interpolates signed scale through collapse");
+                const auto repeat=firing.Apply(2,34,Identity(),p,{human},true,12);
+                Check(repeat[0] && out[0] && Near(*repeat[0],*out[0],0),"repeated bow draw retains midpoint");
+                Check(!firing.Apply(4,99,Identity(),p,{human},true,12)[0],"firing gap reseeds");
+                Check(Near(p[0],current,0),"bow interpolation preserves native palette");
+            }
+            auto skew=Identity();skew[0][1]=.1;
+            Check(!L::BowStringHalf(skew,Identity()),"sheared string rejected");
+            skew=Identity();skew[1][1]=2;
+            Check(!L::BowStringHalf(skew,Identity()),"unverified string scale rejected");
+            auto bunny=pose(3,10002,0x4ce0cfdeaf2fb04eull);bunny.words={0xffff0000,0x1001,0x11002};
+            const auto set=[&](double angle) {
+                human.pose.bones[11]=Flatten(Camera(angle,10));
+                const auto root=Multiply(Expand(human.pose.bones[11]),L::BunnyHeadOffset());
+                bunny.pose.bones[0]=bunny.pose.bones[1]=Flatten(root);
+                bunny.pose.bones[2]=Flatten(Multiply(root,Camera(angle,4)));
+                L::Palette out;out.fill(Camera(0,10000));out[0]=out[1]=root;out[2]=Expand(bunny.pose.bones[2]);return out;
+            };
+            L::History ears;auto before=set(0);ears.Apply(1,0,Identity(),before,{human,bunny},true,330);
+            auto after=set(20);mid=ears.Apply(2,33,Identity(),after,{human,bunny},true,330);
+            Check(mid[0] && Near(*mid[0],Multiply(Camera(10,10),L::BunnyHeadOffset()),1e-5),
+                "bunny root follows head hierarchy through fixed attachment offset");
+            Check(mid[2] && !Near(*mid[2],after[2],1e-5),"bunny ear child animation interpolates");
+            auto duplicate=bunny;duplicate.pose.instance++;
+            Check(!ears.Apply(2,33,Identity(),after,{human,bunny,duplicate},true,330)[0],"duplicate bunny owners rejected");
+            for(auto signature:{0xe3b575dedeb5ae54ull,0x3d9d08ddcad1f38eull,0x1ee17d0b154d34f6ull,
+                                0xb86510278af23ef2ull,0xc876669185553f9bull}) {
+                auto door=pose(1,10003,signature);auto bind=Identity();
+                bind[2][3]=signature==0xc876669185553f9bull?.0012207040563225746:-.0006294240010902286;
+                door.bind[0]=Flatten(bind);p.fill(Camera(0,10000));p[0]=Identity();
+                const unsigned vertices=signature==0xc876669185553f9bull?84:36;
+                L::History doors;doors.Apply(1,0,Identity(),p,{door},true,vertices);
+                p[0][1][3]=6;door.pose.bones[0]=Flatten(p[0]);
+                mid=doors.Apply(2,33,Identity(),p,{door},true,vertices);
+                Check(mid[0] && std::abs((*mid[0])[1][3]-3)<1e-6,"sliding-door family gets halfway translation");
+                Check(!L::DungeonShutterBone(p,door,42),"unverified shutter mesh rejected");
+            }
+            auto light=pose(4,10004,0x84bf0b3a9fcca9e4ull);light.pose.bones[1]=light.pose.bones[2];
+            p.fill(Camera(0,10000));p[0]=Identity();L::History beam;
+            beam.Apply(1,0,Identity(),p,{light},true,60);
+            for(auto& b:light.pose.bones)b[3]=2;p[0][0][3]=2;
+            mid=beam.Apply(2,33,Identity(),p,{light},true,60);
+            Check(mid[0] && std::abs((*mid[0])[0][3]-1)<1e-6,"equivalent mirror beam bones interpolate");
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            {
+                auto lower=pose(1,10020,0x046391818a624e42ull),upper=pose(1,10021,0x046391818a624e42ull);
+                upper.model=lower.model;
+                auto bind=Identity();bind[1][3]=-1199.988037109375;
+                lower.bind[0]=upper.bind[0]=Flatten(bind);
+                const auto set=[&](double y,double offset=0) {
+                    auto a=Identity();for(unsigned c=0;c<3;++c)a[c][c]=.1;
+                    a[1][3]=y;lower.pose.bones[0]=Flatten(a);
+                    auto b=a;b[1][3]-=bind[1][3]*.1;b[1][3]+=offset;upper.pose.bones[0]=Flatten(b);
+                    L::Palette p;p.fill(Camera(0,10000));p[0]=a;return p;
+                };
+                L::History h;auto a=set(0);h.Apply(1,0,Identity(),a,{lower,upper},true,384);
+                auto b=set(4);const auto mid=h.Apply(2,33,Identity(),b,{lower,upper},true,384);
+                Check(mid[0] && std::abs((*mid[0])[1][3]-2)<.0001,
+                    "adjacent Snowhead pillar direct/skin owners agree on rising midpoint");
+                Check(!h.Apply(2,33,Identity(),b,{lower,upper},true,383)[0],"unknown pillar mesh rejected");
+                auto duplicate=upper;duplicate.pose.instance++;
+                Check(!h.Apply(2,33,Identity(),b,{lower,upper,duplicate},true,384)[0],"third pillar owner rejected");
+                Check(!h.Apply(4,99,Identity(),b,{lower,upper},true,384)[0],"pillar gap reseeds");
+                L::History diverging;a=set(0,-1);diverging.Apply(1,0,Identity(),a,{lower,upper},true,384);
+                auto other=a;other[0][1][3]=-1;diverging.Apply(1,0,Identity(),other,{lower,upper},true,384);
+                b=set(4);Check(!diverging.Apply(2,33,Identity(),b,{lower,upper},true,384)[0],
+                    "separately moving rings do not borrow conflicting histories");
+                upper.pose.bones=lower.pose.bones;
+                Check(!h.Apply(2,33,Identity(),b,{lower,upper},true,384)[0],"coincident duplicate rings remain ambiguous");
+                auto middle=pose(1,10022,0x0952810a097e354aeull);
+                auto middle_bind=Identity();middle_bind[0][0]=middle_bind[2][2]=.12006315588951111;
+                middle_bind[1][1]=.10000000149011612;middle.bind[0]=Flatten(middle_bind);
+                L::History central;a=set(0);
+                middle.pose.bones[0]=Flatten(Multiply(a[0],*Inverse(middle_bind)));
+                central.Apply(1,0,Identity(),a,{lower,middle},true,384);
+                b=set(4);middle.pose.bones[0]=Flatten(Multiply(b[0],*Inverse(middle_bind)));
+                const auto central_mid=central.Apply(2,33,Identity(),b,{lower,middle},true,384);
+                Check(central_mid[0] && std::abs((*central_mid[0])[1][3]-2)<.0001,
+                    "middle stone scaled skin agrees with ice ring midpoint");
+                middle.bind[0][0]+=.001f;
+                middle.pose.bones[0]=Flatten(Multiply(b[0],*Inverse(Expand(middle.bind[0]))));
+                Check(!central.Apply(2,33,Identity(),b,{lower,middle},true,384)[0],
+                    "different middle stone bind cannot borrow ice history");
+            }
+            for(unsigned vertices:{48u,72u,144u,348u,720u}) {
+                auto screw=pose(1,10012,0x85335493df397bb2ull),deck=pose(1,10013,0x85335493df397bb2ull);
+                L::Palette p;p.fill(Camera(0,10000));p[0]=Identity();L::History h;
+                Check(!h.Apply(1,0,Identity(),p,{screw,deck},true,vertices)[0],"paired rotor seeds both models");
+                p[0]=Camera(20);screw.pose.bones[0]=deck.pose.bones[0]=Flatten(p[0]);
+                const auto mid=h.Apply(2,33,Identity(),p,{screw,deck},true,vertices);
+                Check(mid[0] && Near(*mid[0],Camera(10),1e-6),"rotor deck and screw share halfway rotation");
+                Check(!h.Apply(2,33,Identity(),p,{screw,deck},true,vertices+1)[0],"unverified paired rotor mesh rejected");
+                auto third=pose(1,10014,screw.signature);third.pose.bones=screw.pose.bones;
+                Check(!h.Apply(2,33,Identity(),p,{screw,deck,third},true,vertices)[0],"third coincident rotor remains ambiguous");
+                Check(!h.Apply(4,99,Identity(),p,{screw,deck},true,vertices)[0],"rotor frame gaps reseed");
+                L::History split;p[0]=Identity();screw.pose.bones[0]=Flatten(p[0]);deck.pose.bones[0]=Flatten(Camera(10));
+                split.Apply(1,0,Identity(),p,{screw,deck},true,vertices);
+                p[0]=Camera(10);split.Apply(1,0,Identity(),p,{screw,deck},true,vertices);
+                p[0]=Camera(20);screw.pose.bones[0]=deck.pose.bones[0]=Flatten(p[0]);
+                Check(!split.Apply(2,33,Identity(),p,{screw,deck},true,vertices)[0],"paired rotor midpoint disagreement rejected");
+            }
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            {
+                auto ice=pose(4,10015,0x4fa89f19eb218899ull);
+                ice.words={0xffff0000,1,2,3};
+                const auto set=[&](float xz,float y) {
+                    auto matrix=Identity();matrix[0][0]=matrix[2][2]=xz;matrix[1][1]=y;
+                    for(auto& bone:ice.pose.bones)bone=Flatten(matrix);
+                    L::Palette p;p.fill(Camera(0,10000));p[0]=matrix;return p;
+                };
+                auto a=set(.01f,.0056f);L::History h;
+                Check(!L::Identify(a[0],ice),"Freezard body has equivalent bones");
+                h.Apply(1,0,Identity(),a,{ice},true,630);
+                auto b=set(.011f,.0052f);const auto mid=h.Apply(2,33,Identity(),b,{ice},true,630);
+                Check(mid[0] && std::abs((*mid[0])[0][0]-.0105f)<1e-7 &&
+                    std::abs((*mid[0])[1][1]-.0054f)<1e-7,
+                    "Freezard death expands sideways and shrinks vertically at midpoint");
+                Check(!h.Apply(2,33,Identity(),b,{ice},true,629)[0],"unknown Freezard mesh excluded");
+                auto twin=ice;twin.pose.instance++;
+                Check(!h.Apply(2,33,Identity(),b,{ice,twin},true,630)[0],"coincident Freezards rejected");
+                Check(!h.Apply(4,99,Identity(),b,{ice},true,630)[0],"Freezard capture gap reseeds");
+                L::History diverging;a=set(.01f,.0056f);ice.pose.bones[1][3]=2;
+                diverging.Apply(1,0,Identity(),a,{ice},true,630);
+                b=set(.011f,.0052f);
+                Check(!diverging.Apply(2,33,Identity(),b,{ice},true,630)[0],"Freezard divergent bone histories rejected");
+                L::History collapse;a=set(.022f,.0008f);collapse.Apply(1,0,Identity(),a,{ice},true,630);
+                b=set(.023f,0);
+                const auto hidden=collapse.Apply(2,33,Identity(),b,{ice},true,630);
+                Check(!hidden[0] || (*hidden[0])[1][1]==0,"collapsed Freezard is never revived");
+            }
+            for(unsigned vertices:{414u,186u}) {
+                auto deku=pose(4,10011,0x150560ccf65e9d98ull);
+                deku.words={0xffff0000,0x1001,0x11002,0x11003};
+                const auto set=[&](double x) {
+                    deku.pose.bones[0]=Flatten(Camera(0,x));
+                    for(unsigned i=1;i<4;++i) {
+                        deku.pose.bones[i]=Flatten(Camera(90,x));
+                        deku.bind[i]=Flatten(Camera(-90,0));
+                    }
+                    L::Palette p;p.fill(Camera(0,10000));
+                    for(unsigned i=0;i<3;++i)p[i]=Expand(deku.pose.bones[i+1]);
+                    return p;
+                };
+                L::History h;auto a=set(0);h.Apply(1,0,Identity(),a,{deku},true,vertices);
+                auto b=set(4);auto mid=h.Apply(2,33,Identity(),b,{deku},true,vertices);
+                for(unsigned slot=0;slot<3;++slot)
+                    Check(mid[slot] && Near(*mid[slot],Camera(90,2),1e-5),"burrowed Deku shared direct bones interpolate");
+                auto duplicate=deku;duplicate.pose.instance++;
+                Check(!h.Apply(2,33,Identity(),b,{deku,duplicate},true,vertices)[0],"overlapping burrowed heads rejected");
+                L::History divergent;a=set(0);deku.pose.bones[3]=Flatten(Camera(90,20));
+                divergent.Apply(1,0,Identity(),a,{deku},true,vertices);
+                b=set(4);
+                Check(!divergent.Apply(2,33,Identity(),b,{deku},true,vertices)[0],"shared current Deku bones with divergent midpoints rejected");
+                auto hidden=Identity();for(unsigned r=0;r<3;++r)for(unsigned c=0;c<3;++c)hidden[r][c]=0;
+                for(auto& bone:deku.pose.bones)bone=Flatten(hidden);b.fill(hidden);
+                Check(!h.Apply(3,66,Identity(),b,{deku},true,vertices)[0],"burrowed head hidden geometry stays hidden");
+            }
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            for(auto spec:{std::array<std::uint64_t,3>{0x049480e14d9b324bull,23,870},
+                           std::array<std::uint64_t,3>{0x9bbb839482a3896aull,3,162}}) {
+                auto actor=pose(unsigned(spec[1]),10010,spec[0]);L::Palette p;
+                p.fill(Camera(0,10000));p[0]=Identity();L::History h;
+                Check(!h.Apply(1,0,Identity(),p,{actor},true,unsigned(spec[2]))[0],"shared actor bones seed");
+                for(auto& bone:actor.pose.bones)bone[3]=4;p[0][0][3]=4;
+                auto mid=h.Apply(2,33,Identity(),p,{actor},true,unsigned(spec[2]));
+                Check(mid[0] && std::abs((*mid[0])[0][3]-2)<1e-6,"tank fish/Bombchu equivalent bones get midpoint");
+                auto duplicate=actor;duplicate.pose.instance++;
+                Check(!h.Apply(2,33,Identity(),p,{actor,duplicate},true,unsigned(spec[2]))[0],"overlapping fish/Bombchu instances remain ambiguous");
+            }
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
             auto fish=pose(8,438,0x3f33b43a6cf98ad4ull);
             const auto set=[&](double t,unsigned vertices) {
                 for(unsigned i=0;i<8;++i)fish.pose.bones[i]=Flatten(Camera(0,i*20+t*4));
@@ -2596,6 +3542,34 @@ int main() {
             Check(!h.Apply(2,33,Identity(),b,{fish},true,732)[0],"divergent equivalent fish bones rejected");
             h.Reset();a=set(0,732);h.Apply(1,0,Identity(),a,{fish},true,733);set(1,732);
             Check(!h.Apply(2,33,Identity(),b,{fish},true,733)[0],"unknown fish mesh excluded from equivalent-bone fallback");
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            auto princess=pose(25,439,0x91e28867df89d7bcull);
+            princess.words[9]=(8u<<16)|9;
+            princess.words[12]=(9u<<16)|12;
+            const auto set=[&](double t) {
+                for(unsigned i=0;i<25;++i)princess.pose.bones[i]=Flatten(Camera(0,i*20+t*4));
+                princess.pose.bones[12]=princess.pose.bones[9];
+                L::Palette p;p.fill(Camera(0,99999));p[0]=Expand(princess.pose.bones[9]);
+                return p;
+            };
+            L::History h;auto a=set(0);
+            Check(!L::Identify(a[0],princess),"Princess eye bones are ambiguous to generic lookup");
+            Check(!h.Apply(1,0,Identity(),a,{princess},true,24)[0],"Princess eyes seed history");
+            auto b=set(1);const auto half=h.Apply(2,33,Identity(),b,{princess},true,24);
+            Check(half[0]&&Near(*half[0],Camera(0,182),1e-5),"Princess eyes follow interpolated head motion");
+            Check(!h.Apply(2,33,Identity(),b,{princess},false,24)[0],"Princess eyes respect interpolation toggle");
+            auto duplicate=princess;duplicate.pose.instance++;
+            Check(!h.Apply(3,66,Identity(),b,{princess,duplicate},true,24)[0],"coincident Princess instances stay native");
+            Check(!h.Apply(4,99,Identity(),b,{princess},true,24)[0],"Princess eye history resets after a gap");
+            h.Reset();a=set(0);princess.pose.bones[12]=Flatten(Camera(0,179));
+            h.Apply(1,0,Identity(),a,{princess},true,24);b=set(1);
+            Check(!h.Apply(2,33,Identity(),b,{princess},true,24)[0],"divergent Princess eye midpoint bones rejected");
+            h.Reset();a=set(0);h.Apply(1,0,Identity(),a,{princess},true,25);b=set(1);
+            Check(!h.Apply(2,33,Identity(),b,{princess},true,25)[0],"unverified Princess mesh stays native");
+            h.Reset();princess.signature++;a=set(0);h.Apply(1,0,Identity(),a,{princess},true,24);b=set(1);
+            Check(!h.Apply(2,33,Identity(),b,{princess},true,24)[0],"other skeletons do not inherit Princess eye fallback");
         }
         {
             namespace L=MM3D::LinkInterpolation;
@@ -2961,8 +3935,7 @@ int main() {
         {
             namespace L=MM3D::LinkInterpolation;
             auto twin=pose(32,436,0x323a7bd77f6edea5ull);
-            twin.words[19]=0x00011013;
-            for(unsigned i=20;i<32;++i)twin.words[i]=((i-1)<<16)|0x1000|i;
+            twin.words.assign(L::TwinmoldTopology.begin(),L::TwinmoldTopology.end());
             const auto chain=[&](double t) {
                 std::vector<Matrix> bones(32);
                 for(unsigned i=0;i<32;++i) {
@@ -3024,6 +3997,81 @@ int main() {
         }
         {
             namespace L=MM3D::LinkInterpolation;
+            auto eye=pose(22,438,0x2162c5636174fb2cull);
+            eye.words={0xffff0000,0x1001,0x11002,0x21003,0x21004,0x41005,0x21006,0x21007,
+                0x21008,0x81009,0x8100a,0x2100b,0xb100c,0xb100d,0x100e,0xe100f,
+                0xf1010,0x101011,0xe1012,0x121013,0x131014,0xe1015};
+            const std::vector<std::pair<unsigned,std::vector<unsigned>>> meshes{
+                {1050,{2,6,12,9,13,10}},{888,{2,1,14,21,7,18,15}},
+                {594,{19,20,16,17,7,18,15}},{162,{21,14}},
+                {192,{2,3}},{30,{2,4,5}},{357,{14,21,11,8}}};
+            // Every joint coincides at rest: ordinary per-slot ownership is
+            // ambiguous, but verified whole-mesh ordering resolves it.
+            const auto chain=[&](double t) {
+                std::vector<Matrix> bones(22);
+                for(unsigned i=0;i<22;++i) {
+                    const auto local=Camera(t*(i+1),i?t:4*t);
+                    bones[i]=i?Multiply(bones[eye.words[i]>>16],local):local;
+                }
+                return bones;
+            };
+            const auto a=chain(0),b=chain(1),expected=chain(.5);
+            const auto set=[&](const auto& bones,const Matrix& camera) {
+                for(unsigned i=0;i<22;++i)eye.pose.bones[i]=Flatten(Multiply(InverseRigid(camera),bones[i]));
+            };
+            const auto palette=[&](const auto& indices) {
+                L::Palette p;p.fill(Camera(0,99999));
+                for(unsigned i=0;i<indices.size();++i)p[i]=Expand(eye.pose.bones[indices[i]]);
+                p[0][0][3]+=.02;return p;
+            };
+            for(const auto& [vertices,indices]:meshes) {
+                L::History h;set(a,Identity());auto native=palette(indices);
+                Check(L::EyegoreBones(native,eye,vertices).has_value(),"Eyegore coincident joints match full mesh");
+                Check(!h.Apply(1,0,Identity(),native,{eye},true,vertices)[0],"Eyegore first frame seeds");
+                const auto camera=Camera(15,10);set(b,camera);native=palette(indices);
+                const auto result=h.Apply(2,33,camera,native,{eye},true,vertices);
+                for(unsigned i=0;i<indices.size();++i) {
+                    const auto correction=Multiply(*Inverse(Expand(eye.pose.bones[indices[i]])),native[i]);
+                    Check(result[i] && Near(*result[i],Multiply(Multiply(InverseRigid(camera),expected[indices[i]]),correction),.001),
+                        "Eyegore full hierarchy interpolates through camera motion and bind correction");
+                }
+                auto duplicate=eye;duplicate.pose.instance++;
+                Check(!h.Apply(3,66,camera,native,{eye,duplicate},true,vertices)[0],"coincident Eyegore instances remain ambiguous");
+                Check(!h.Apply(4,99,camera,native,{eye},false,vertices)[0],"disabled Eyegore stays native");
+                Check(!h.Apply(6,165,camera,native,{eye},true,vertices)[0],"Eyegore gap reseeds");
+                auto bad=native;bad[indices.size()-1][0][3]+=1;
+                Check(!L::EyegoreBones(bad,eye,vertices),"every Eyegore palette slot must match");
+                bad=native;bad[0][0][0]=std::numeric_limits<double>::quiet_NaN();
+                Check(!L::EyegoreBones(bad,eye,vertices),"nonfinite Eyegore slot rejected");
+                auto wrong=eye;wrong.signature++;
+                Check(!L::EyegoreBones(native,wrong,vertices),"unrelated skeleton excluded from Eyegore mapping");
+                wrong=eye;wrong.words[3]=3;
+                Check(!L::EyegoreBones(native,wrong,vertices),"Eyegore full topology verified");
+                Check(!L::EyegoreBones(native,eye,vertices+1),"unknown Eyegore mesh excluded");
+            }
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
+            auto twin=pose(32,439,0x323a7bd77f6edea5ull);
+            twin.words.assign(L::TwinmoldTopology.begin(),L::TwinmoldTopology.end());
+            const auto set=[&](double x,const Matrix& camera) {
+                for(auto& bone:twin.pose.bones)bone=Flatten(Multiply(InverseRigid(camera),Camera(0,x)));
+                L::Palette p;p.fill(Camera(0,99999));p[0]=p[1]=Expand(twin.pose.bones[1]);return p;
+            };
+            L::History h;auto p=set(0,Identity());h.Apply(1,0,Identity(),p,{twin},true,510);
+            const auto camera=Camera(10,500);p=set(150,camera);
+            auto half=h.Apply(2,33,camera,p,{twin},true,510);
+            Check(half[0] && Near(Multiply(camera,*half[0]),Camera(0,75),.001),"Twinmold fast swing remains continuous in world space");
+            p=set(400,camera);
+            Check(!h.Apply(3,66,camera,p,{twin},true,510)[0],"Twinmold teleport still reseeds");
+            auto a=Identity(),b=Camera(5);a[0][1]=.01;b[0][1]=.02;
+            Check(!Half(a,b) && L::TwinmoldHeadHalf(a,b,twin,18),"Twinmold terminal head shear has bounded fallback");
+            Check(!L::TwinmoldHeadHalf(a,b,twin,17),"Twinmold affine fallback excludes other joints");
+            b[0][1]=2;Check(!L::TwinmoldHeadHalf(a,b,twin,18),"large Twinmold deformation rejected");
+            twin.words[18]=18;Check(!L::TwinmoldHeadHalf(a,a,twin,18),"Twinmold head fallback verifies topology");
+        }
+        {
+            namespace L=MM3D::LinkInterpolation;
             auto giant=pose(26,437,0x8025d822f84e8240ull);
             giant.words.assign(MM3D::LinkPoseCapture::BoneWords.begin(),MM3D::LinkPoseCapture::BoneWords.end());
             const auto chain=[&](double t) {
@@ -3047,7 +4095,8 @@ int main() {
                 p[0][0][0]+=.00002;p[0][1][3]+=.05;return p;
             };
             const std::vector<std::pair<unsigned,std::vector<unsigned>>> meshes{
-                {234,{17,16}},{234,{21,20}},{423,{9,14,15,10,16,17}},{747,{7,8,19,6,20,21}}};
+                {234,{17,16}},{234,{21,20}},{318,{17,16}},{318,{21,20}},
+                {423,{9,14,15,10,16,17}},{747,{7,8,19,6,20,21}}};
             for(const auto& [vertices,indices]:meshes) {
                 L::History h;set(a);auto native=palette(a,indices);
                 Check(L::GiantLinkSkeleton(giant),"Giant Link proportions recognized");
@@ -3233,6 +4282,58 @@ int main() {
             Check(!MM3D::LinkInterpolation::SlimeHalf(a,invalid,slime,444),"nonfinite blob rejected");
             slime.signature++;
             Check(!MM3D::LinkInterpolation::SlimeHalf(a,b,slime,444),"other skeletons retain shear guard");
+        }
+        {
+            // Captured Wart bubble roots contain shear, unlike rigid actors.
+            auto bubble=pose(1,434,0xb847a2c91407dd5dull);
+            auto a=Identity();a[0][0]=a[1][1]=a[2][2]=.13;a[0][1]=.006;
+            auto b=a;b[0][1]=.004;b[1][3]=6;
+            auto expected=a;expected[0][1]=.005;expected[1][3]=3;
+            Check(!Half(a,b),"Wart bubble wobble is not a rigid transform");
+            MM3D::LinkInterpolation::History h;
+            MM3D::LinkInterpolation::Palette p;p.fill(Camera(0,9999));p[0]=a;
+            bubble.pose.bones[0]=Flatten(a);
+            Check(!h.Apply(1,0,Identity(),p,{bubble},true,216)[0],"Wart bubble seeds history");
+            p[0]=b;bubble.pose.bones[0]=Flatten(b);
+            const auto result=h.Apply(2,33,Identity(),p,{bubble},true,216);
+            Check(result[0] && Near(*result[0],expected,1e-6),"Wart movement and wobble interpolate together");
+            Check(!h.Apply(2,33,Identity(),p,{bubble},false,216)[0],"Wart toggle preserves native pose");
+            Check(!h.Apply(4,99,Identity(),p,{bubble},true,216)[0],"Wart missing frame resets history");
+            using MM3D::LinkInterpolation::WartBubbleHalf;
+            const auto reverse=WartBubbleHalf(b,a,bubble,216);
+            Check(reverse && Near(*reverse,expected,1e-6),"Wart affine blend is symmetric");
+            Check(!WartBubbleHalf(a,b,bubble,18),"unverified Wart mesh rejected");
+            auto invalid=b;invalid[0][0]=0;
+            Check(!WartBubbleHalf(a,invalid,bubble,216),"collapsed Wart bubble rejected");
+            invalid=b;invalid[0][0]=-.13;
+            Check(!WartBubbleHalf(a,invalid,bubble,216),"Wart scale flip rejected");
+            invalid=b;invalid[0][3]=101;
+            Check(!WartBubbleHalf(a,invalid,bubble,216),"Wart teleport rejected");
+            invalid=b;invalid[0][1]=1;
+            Check(!WartBubbleHalf(a,invalid,bubble,216),"large Wart deformation rejected");
+            invalid=b;invalid[0][0]=std::numeric_limits<double>::quiet_NaN();
+            Check(!WartBubbleHalf(a,invalid,bubble,216),"nonfinite Wart transform rejected");
+            auto left=bubble,right=bubble;left.pose.instance=10;right.pose.instance=20;
+            auto l=a,r=a;l[0][3]=0;r[0][3]=200;
+            left.pose.bones[0]=Flatten(l);right.pose.bones[0]=Flatten(r);
+            h.Reset();p[0]=l;h.Apply(1,0,Identity(),p,{left,right},true,216);
+            // Model slots exchange positions after the native depth sort.
+            l[0][3]=4;r[0][3]=204;
+            left.pose.bones[0]=Flatten(r);right.pose.bones[0]=Flatten(l);p[0]=r;
+            const auto sorted=h.Apply(2,33,Identity(),p,{left,right},true,216);
+            Check(sorted[0] && std::abs((*sorted[0])[0][3]-202)<1e-6,
+                "Wart model reorder follows spatial bubble identity");
+            p[0]=l;const auto sorted_left=h.Apply(2,33,Identity(),p,{left,right},true,216);
+            Check(sorted_left[0] && std::abs((*sorted_left[0])[0][3]-2)<1e-6,
+                "both reordered bubbles retain independent histories");
+            h.Reset();l[0][3]=0;r[0][3]=1;
+            left.pose.bones[0]=Flatten(l);right.pose.bones[0]=Flatten(r);p[0]=l;
+            h.Apply(1,0,Identity(),p,{left,right},true,216);
+            l[0][3]=.5;left.pose.bones[0]=Flatten(l);p[0]=l;
+            Check(!h.Apply(2,33,Identity(),p,{left},true,216)[0],
+                "ambiguous Wart crossings remain native");
+            bubble.signature++;
+            Check(!WartBubbleHalf(a,b,bubble,216),"other actors retain rigid guard");
         }
         {
             auto small=Identity(),large=Identity();
@@ -4340,7 +5441,7 @@ int main() {
         Check(alternate && Near(*alternate,Multiply(half,delta),1e-9),
               "underwater clipping remains specific to each draw");
         Check(!water.Observe(4,99,b,after),"underwater gaps still require reacquisition");
-        auto invalid=after;invalid[0][1]*=1.02;
+        auto invalid=after;invalid[0][1]*=1.06;
         Check(!GradualWorldWobble(before,invalid),"abrupt aspect change excluded from wobble");
         invalid=after;invalid[1][0]=before[1][0];
         Check(!GradualWorldWobble(before,invalid),"single-axis resize excluded from wobble");
@@ -4367,7 +5468,22 @@ int main() {
               "captured strong swimming distortion keeps camera and lens interpolation");
         auto other=swimming,other_next=next;
         other[2]=other_next[2]={0,0,1.0003907680511475,5.001953601837158};
-        Check(!GradualWorldWobble(other,other_next),"strong wobble exception excludes normal scene projection");
+        Check(GradualWorldWobble(other,other_next).has_value(),"swimming distortion does not depend on scene draw distance");
+        for(const auto depth:{std::array<double,2>{1.000735878944397,5.003678798675537},
+                              std::array<double,2>{1.0005003213882446,5.002501964569092}}) {
+            other=swimming;other_next=next;
+            other[2]=other_next[2]={0,0,depth[0],depth[1]};
+            other[0][1]=1.607111;other[1][0]=-.977137;
+            other_next[0][1]=1.545353;other_next[1][0]=-.992935;
+            History entry;entry.Observe(1,0,a,other);
+            auto expected=other_next;
+            expected[0][1]=(other[0][1]+other_next[0][1])*.5;
+            expected[1][0]=(other[1][0]+other_next[1][0])*.5;
+            const auto actual=entry.Observe(2,33,b,other_next);
+            Check(actual && Near(*actual,Multiply(expected,delta),1e-9),"water-entry wobble keeps midpoint at both captured draw distances");
+            other[2][3]=other_next[2][3]=10;
+            Check(!GradualWorldWobble(other,other_next),"unrelated near-plane family does not receive stronger wobble allowance");
+        }
         other_next=next;other_next[0][1]=swimming[0][1]*1.06;
         Check(!GradualWorldWobble(swimming,other_next),"strong underwater distortion remains bounded");
         other_next=next;other_next[1][0]=swimming[1][0];

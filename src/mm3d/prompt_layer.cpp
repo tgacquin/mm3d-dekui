@@ -17,9 +17,17 @@ void PromptLayer::Destroy() {
     auto device = instance.GetDevice();
     device.destroyFramebuffer(framebuffer); device.destroyImageView(view);
     device.destroyImage(image); device.freeMemory(memory);
+    device.destroyImageView(depth_sample_view);depth_sample_view=nullptr;
     device.destroyImageView(depth_view); device.destroyImage(depth_image); device.freeMemory(depth_memory);
     depth_view=nullptr; depth_image=nullptr; depth_memory=nullptr;
     framebuffer = nullptr; view = nullptr; image = nullptr; memory = nullptr;
+}
+vk::ImageView PromptLayer::DepthSampleView() {
+    if(depth_image&&!depth_sample_view)depth_sample_view=instance.GetDevice().createImageView({
+        .image=depth_image,.viewType=vk::ImageViewType::e2D,
+        .format=instance.GetTraits(VideoCore::PixelFormat::D24S8).native,
+        .subresourceRange={vk::ImageAspectFlagBits::eDepth,0,1,0,1}});
+    return depth_sample_view;
 }
 bool PromptLayer::Begin(unsigned w, unsigned h, float depth_clear, bool reset_depth) {
     if (!w || !h || w > 8192 || h > 8192) return false;
@@ -59,7 +67,7 @@ bool PromptLayer::Begin(unsigned w, unsigned h, float depth_clear, bool reset_de
         if(with_depth) {
             const auto format=instance.GetTraits(VideoCore::PixelFormat::D24S8).native;
             auto depth_info=info;depth_info.format=format;
-            depth_info.usage=vk::ImageUsageFlagBits::eDepthStencilAttachment|vk::ImageUsageFlagBits::eTransferDst;
+            depth_info.usage=vk::ImageUsageFlagBits::eDepthStencilAttachment|vk::ImageUsageFlagBits::eTransferDst|vk::ImageUsageFlagBits::eSampled;
             depth_image=device.createImage(depth_info);
             const auto depth_req=device.getImageMemoryRequirements(depth_image);
             unsigned depth_type=0;

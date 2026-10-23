@@ -5,6 +5,7 @@
 #endif
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/player_settings.h"
+#include "mm3d/translation.h"
 #include "mm3d/player_settings_bridge.h"
 #include "citra_qt/configuration/configure_cheats.h"
 #include "citra_qt/configuration/configure_input.h"
@@ -1299,6 +1300,18 @@ void GMainWindow::ConnectWidgetEvents() {
         using namespace MM3D::PlayerSettings;
         ApplyPending(Settings::values, [&] { system.ApplySettings(); },
                      [&] { config->Save(); });
+        if(MM3D::Translation::import_requested.exchange(false)) {
+            const auto folder=QFileDialog::getExistingDirectory(this,tr("Import translation: select romfs folder"));
+            if(!folder.isEmpty()) {
+                const auto error=MM3D::Translation::Import(folder.toStdString(),
+                    FileUtil::GetUserPath(FileUtil::UserPath::ConfigDir)+"mm3d-local/");
+                if(error.empty())
+                    QMessageBox::information(this,tr("Translation imported"),
+                        tr("Restart the game to use the translation. Messages changed by enabled DekUI features use English fallback; other text stays translated. You can disable the pack under Controls."));
+                else QMessageBox::warning(this,tr("Translation import failed"),QString::fromStdString(error));
+            }
+            render_window->setFocus();
+        }
         if(open_textures.exchange(false)) {
             const auto path=QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::LoadDir))+
                 QStringLiteral("textures/0004000000125500");

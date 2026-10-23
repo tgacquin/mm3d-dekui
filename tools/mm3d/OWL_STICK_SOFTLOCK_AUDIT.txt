@@ -1,0 +1,81 @@
+Owl statue / Deku Stick softlock audit — 22 October 2026
+Original audit below; implementation and validation follow at the end.
+
+Expected behavior: a Deku Stick should activate an inactive soaring owl when
+strike activation is enabled. Feather checkpoints are separate.
+
+Finding: two activation paths disagree about stick hits and conversation state.
+
+1. src/mm3d/owl_sword.h, Update (lines 53–67):
+   - Clears actor flags bit 0x100 (TalkInitiated) for every locked owl update.
+   - Accepts only attack mask 0x01000200 (Sword and Great Fairy's Sword).
+   - Deku Stick is attack bit 1, mask 0x00000002, so it is rejected.
+   - The collider acceptance mask at native 0x68cef0 is 0x01000202, which
+     includes sticks. The stick collision itself is valid.
+   - Existing owl_sword_check.cpp explicitly expects weapon mask 2 to leave
+     the owl in Idle. It tests that narrow rule, not the complete interaction.
+
+2. Bundled Restoration source, source/rst/fixes.cpp,
+   FixOwlStatueActivationTrigger (called by PreActorCalcHook):
+   - Reads element collision bit at owl+0x23a, clears it, and schedules a
+     five-tick activation timer at owl+0x28d for any hit on an inactive owl.
+   - At timer==1, clears a pending player cutscene ID, calls gctx->Talk(owl),
+     and sets the timer to -1.
+   - Verified in the installed USA code: timer logic0x7d3c4c–0x7d3d08;
+     Talk call0x7d3cb0 ->0x7d0efc ->0x2209a8.
+
+3. Native Talk0x2209a8 sets owl flags bit0x100 at0x220a50–0x220a58
+   and assigns the player's talk actor. Our update then erases bit0x100.
+   Native owl update calls0x3482b4 at0x4bfc4c; that helper returns whether
+   bit0x100 was present. With it erased, the inactive-owl activation branch
+   at0x4bfc78–0x4bfc80 is bypassed. The stick also cannot use our direct
+   activation path because its attack mask is rejected.
+
+Conclusion: the stick is recognized by the collider and Restoration's delayed
+interaction, but rejected by our direct path; our blanket talk-flag clearing
+then prevents the statue from accepting the delayed interaction. This is a
+strong code-level explanation for Link entering an interaction that cannot
+advance. It is not a live reproduction of the reporting user's exact state.
+
+Read-only verification
+- Inspected installed code-patched.bin and the bundled Restoration source.
+- Temporary host fixture calls the current Update with a stick hit and the
+  TalkInitiated flag: option ON clears it and stays Idle; OFF preserves it.
+- No running game was restarted, no save data changed, no fix applied.
+
+Future fix scope (not implemented)
+- Include Deku Stick in supported strike activation.
+- Reconcile the direct activation and Restoration delayed-Talk paths, instead
+  of merely adding one attack-mask bit. Avoid clearing an accepted interaction
+  without also completing/canceling its player-side state.
+- Verify inactive and active owls, both tutorial settings, Classic Saving on/off,
+  repeat hits, stick breakage and pending cutscenes; keep feathers unaffected.
+
+Implemented after authorization — 22 October 2026
+- Direct activation accepts the native collider mask 0x01000202, including
+  Deku Sticks, ordinary swords and the Great Fairy's Sword.
+- A guarded pre-actor hook at 0x7d3c4c cancels Restoration's activation timer
+  and skips its delayed Talk only while strike activation is enabled for an
+  ordinary owl. It retains the base collider hit for the direct activation
+  path. Active owls are included so a queued timer cannot force a late Talk.
+- The hook returns through the native 0x7d3cbc epilogue, preserving the stack
+  and saved registers. Disabled mode and feathers replay the displaced ADD.
+- Direct Update no longer erases TalkInitiated. Already accepted conversations
+  proceed through native Update and the existing quiet-completion cleanup.
+- Both hook paths share binary guards. The existing presentation.json key is
+  unchanged; the checkbox/help now explicitly include Deku Sticks.
+
+Validation
+- owl_sword_check passes against installed code-patched.bin: swords/sticks,
+  delayed timers 0/1/2/5/-1, active/inactive statues, feathers, intro modes,
+  existing TalkInitiated, invalid/expired hit data, running actions, disabled
+  instruction replay, register preservation and exact binary signatures.
+- owl_intro_check and classic_save_hooks_check pass against the same binary;
+  classic-save tests include Classic Saving both on and off.
+- classic_owl_return_check passes against the installed mod's use.gmsg.
+  An initial run against vanilla ROM text failed because that fixture expects
+  the mod's expanded owl dialogue; no production text changes were needed.
+- Live reproduction/testing remains outstanding. The running game and save
+  files were left alone. No claim of a tested live pending-cutscene scenario.
+- Azahar build passed: cmake --build build-macos --target azahar --parallel 6
+  (log: /private/tmp/mm-owl-stick-build.log). git diff --check passed.

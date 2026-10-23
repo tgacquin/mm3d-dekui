@@ -13,7 +13,7 @@ constexpr unsigned Limit = 64;
 struct alignas(16) Uniforms {
     std::array<int,4> info{}; // count, inverse (keep unselected), normalized scene copy, reserved
     std::array<std::array<float,4>,Limit> regions{};
-    std::array<int,4> pause{}; // xyz: pause bindings; w: reserved
+    std::array<int,4> pause{}; // Texture bindings: 1/2 dark pause, 3/4 full-bright photo; odd values flip Y.
 };
 static_assert(sizeof(Uniforms)==32+16*Limit);
 inline bool Add(Uniforms& u,std::array<float,4> r) {
@@ -76,10 +76,14 @@ inline std::string Shader(std::string source) {
         std::string coord="texcoord"+index;
         if(unit==2&&source.find("textureLod(tex2, texcoord1")!=std::string::npos)coord="texcoord1";
         source.insert(at+name.size(),"\nif (mm3d_pause_info["+index+"] != 0) {\n"
-            "vec2 raw = vec2("+coord+".x * 512.0, (mm3d_pause_info["+index+"] == 1 ? 1.0-"+coord+".y : "+coord+".y) * 256.0);\n"
+            // LayoutShader flips V at instruction 0xfc: the photo's incoming
+            // V range is 16/256..1, not the MFL resource's 0..240/256.
+            // Resolve orientation within those 240 image rows in both cases.
+            "float v_start = mm3d_pause_info["+index+"] > 2 ? 16.0/256.0 : 0.0;\n"
+            "vec2 raw = vec2("+coord+".x * 512.0, (mm3d_pause_info["+index+"] % 2 == 1 ? 1.0-"+coord+".y : "+coord+".y-v_start) * 256.0);\n"
             "if (raw.x < 0.0 || raw.x > 400.0 || raw.y < 0.0 || raw.y > 240.0) return vec4(0,0,0,1);\n"
             "vec3 rgb = textureLod(tex"+index+", clamp(raw.yx / vec2(240.0,400.0), vec2(0.0), vec2(1.0)), 0.0).rgb;\n"
-            "return vec4(rgb * 0.25, 1.0);\n}\n");
+            "return vec4(rgb * (mm3d_pause_info["+index+"] > 2 ? 1.0 : 0.25), 1.0);\n}\n");
     }
     return source;
 }

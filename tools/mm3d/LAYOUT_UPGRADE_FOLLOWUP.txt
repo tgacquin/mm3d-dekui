@@ -1,0 +1,70 @@
+Layout upgrade follow-up — 23 October 2026
+
+User reports from watching existing installations after the previous update:
+- Gear pictograph stayed in the middle of the Gear screen instead of receiving
+  our new editor position.
+- Moon mask-selection description box stayed centered instead of moving right.
+- Before release, audit other HUD/menu placements edited locally but not applied
+  through packaged defaults and upgrades. These two are confirmed user reports,
+  not an exhaustive list of affected elements.
+
+Status: user requested investigation and repair after the initial note.
+
+Current source observations (not proof of the reporting users' exact cause):
+- tools/mm3d/layout_migration.py already has a pending revision-2 gear_photo
+  group for gear_6_*; its comment says revision 1 predated that group.
+  Verify this correction reaches upgrades that already ran revision 1.
+- Packaged photo defaults currently use x=78.7, y=-20.6, scale=0.88.
+- Packaged mask description defaults use mask_present_6_x=80.6, y=5.6,
+  scale=0.63. However, mask_present_* is not a migration group: only absent
+  keys receive defaults. Existing serialized centered values can survive.
+- src/mm3d/settings.cpp initializes a missing mask description with x=0 and
+  the former global dialogue y/scale, before reading explicit mask settings.
+  Check upgrades from both missing and already serialized mask settings.
+
+Follow-up acceptance:
+- Compare editor-approved positions against release defaults and all presets.
+- Exercise a clean install and upgrades from the last shipped version, including
+  installations that have already saved settings or run a layout migration.
+- Update known old shipped/fallback placements without overwriting genuine user
+  customization, unrelated HUD settings, controls, or save inventory.
+- Verify Gear photo and Moon mask description placement in the upgraded layout;
+  keep their respective position and scale controls functional.
+- Do not treat local editor appearance or fresh-install behavior as evidence
+  that existing installations received the same placement.
+
+Investigation and correction
+- Reproduced the centered mask description with a serialized x=0, y=-8.1,
+  scale=0.76. The old upgrader left it unchanged despite the release default.
+- Also reproduced inherited item-panel/title positions surviving in mask keys.
+- Compared the saved editor profile at Library/Application Support/Azahar/
+  config/mm3d-local/presentation.json against packaged defaults. No additional
+  position discrepancies were found; gameplay/development preferences were
+  intentionally not copied into release defaults. The magic-height difference
+  was only float serialization rounding.
+- Audited all changed previously shipped defaults. Magic height (2 -> 1.68)
+  and minimap opacity (0.70 -> 0.85) were explicitly preserved even when still
+  at stock values. Added conservative migration for these two HUD values.
+- Migration revision 3 handles installs already marked revision 1 or 2.
+  The prior photo correction is retained and exercised through the upgrader.
+- Mask-selection controls and mask description are separate migration groups:
+  a custom panel position does not prevent correction of a stock description.
+  Recognized mask fallbacks come from the old/current shipped item layouts
+  and the loader's centered dialogue defaults. Unknown/custom groups survive.
+- The existing explicit Reset menu layouts action now includes mask selection
+  and Gear photo placement, with matching help text; custom HUD values remain.
+- Updated the game-folder setup gate and reset-baseline compatibility for v3.
+
+Verification
+- Before the fix, regression cases failed for centered description, inherited
+  mask panel, and old HUD defaults. After the fix all 17 layout tests pass.
+- All 24 resource-upgrade tests pass, including revisions 1/2, original-byte
+  backups, preserved custom layouts/preferences/save files, no unnecessary
+  resource extraction, and repeated-upgrade idempotence.
+- Packaged setup import/default-profile policy check passes.
+- Azahar and mm3d_registry_tests build passed. The profile-registry CTest passes,
+  including explicit photo/mask layout reset on baseline versions 1, 2 and 3
+  while retaining custom HUD height and unrelated preferences.
+- git diff --check passes. Build log: /private/tmp/mm-layout-upgrade-build.log.
+- Running game, actual installed settings, and save files were not modified.
+  This verifies upgrade results; live screen appearance is not asserted here.

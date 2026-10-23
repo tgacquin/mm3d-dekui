@@ -188,7 +188,9 @@ public:
         const auto bay=GreatBayWaterInterpolation::Identify(key[5],texture_mask,value);
         // The renderer supplies this only after the complete material matches.
         if(coastal && (*coastal>=std::size(CoastalWaterInterpolation::Patterns) ||
-           CoastalWaterInterpolation::Identify(key[5],texture_mask,value)!=coastal))return {};
+           CoastalWaterInterpolation::Patterns[*coastal].vertices!=key[5] ||
+           CoastalWaterInterpolation::Patterns[*coastal].mask!=texture_mask ||
+           !CoastalWaterInterpolation::MatchesUV(*coastal,value)))return {};
         for(unsigned r=0;r<(coastal?CoastalWaterInterpolation::Rows(*coastal):bay?GreatBayWaterInterpolation::Rows(*bay):epona?2u:6u);++r)
             for(float v:value[r])if(!std::isfinite(v))return {};
         auto it=entries.find(key);
@@ -207,7 +209,9 @@ public:
                 auto half=value;
                 for(unsigned r=0;r<rows;++r) {
                     if(value[r]!=e.value[r])return {};
-                    half[r][3]=(*e.half)[r][3];
+                    if(coastal && CoastalWaterInterpolation::Patterns[*coastal].rotating)
+                        half[r]=(*e.half)[r];
+                    else half[r][3]=(*e.half)[r][3];
                 }
                 return half;
             }

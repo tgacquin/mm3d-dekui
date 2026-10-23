@@ -38,7 +38,7 @@ public:
         const std::string& guid);
     std::shared_ptr<SDLJoystick> GetSDLJoystickBySDLID(SDL_JoystickID sdl_id);
 
-    Common::ParamPackage GetSDLControllerButtonBind(const Common::ParamPackage a_button_params,
+    static Common::ParamPackage GetSDLControllerButtonBind(const Common::ParamPackage a_button_params,
                                                     Settings::NativeButton::Values button);
     Common::ParamPackage GetSDLControllerAnalogBindByGUID(const std::string& guid, int port,
                                                           Settings::NativeAnalog::Values analog);

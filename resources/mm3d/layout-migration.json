@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "previous_revision": "60b7aa18d",
   "previous": {
     "single_screen_text": true,
@@ -576,6 +576,7 @@
   },
   "current": {
     "single_screen_text": true,
+    "stick_click_controls": false,
     "fix_bloom": true,
     "interpolation_60fps": true,
     "interpolation_cpu_vertices": true,
@@ -1241,7 +1242,8 @@
     "cutscene_camera_fov": 49,
     "gear_6_x": 78.69999694824219,
     "gear_6_y": -20.600000381469727,
-    "gear_6_scale": 0.8799999952316284
+    "gear_6_scale": 0.8799999952316284,
+    "hd_pictograph_photos": true
   },
   "legacy_fallbacks": {
     "song_banner_scale": 1,
@@ -1263,14 +1265,12 @@
     "gear_6_scale": 1
   },
   "preserve_existing": [
-    "minimap_opacity",
     "classic_file_select_sky",
-    "file_select_sky_time_of_day",
-    "magic_bar_height"
+    "file_select_sky_time_of_day"
   ],
   "profile_hashes": {
     "notebook.json": "2eec6780836b0a6ee2d8b413b98d64e6421269224973745a8ec70cc92eca0d40",
-    "presentation.json": "a870d3b0a2bf08570ab0bf1db494456c23c83b63194963f7e2863772bc7d919c"
+    "presentation.json": "68eb48f30c7a7ccbaed0d947b2835f9caf924ee62b337eb8f878a6c8259cd3f0"
   },
   "retired_profiles": {
     "config/mm3d-local/title-screen/version.json": "b88f3593ac34151989590bd439405bced9d76f3ab73b5638f4362d0d26b5f65f",
@@ -1339,5 +1339,59 @@
       "vertices": 4,
       "width": 480
     }
-  ]
+  ],
+  "legacy_group_defaults": {
+    "mask_selection": [
+      {
+        "mask_present_1_scale": 0.5299999713897705,
+        "mask_present_1_x": -10.600000381469727,
+        "mask_present_1_y": 53.5,
+        "mask_present_3_scale": 0.6600000262260437,
+        "mask_present_3_x": -46.900001525878906,
+        "mask_present_3_y": -108.9000015258789,
+        "mask_present_4_scale": 1,
+        "mask_present_4_x": -512,
+        "mask_present_4_y": 435.6000061035156,
+        "mask_present_5_scale": 1,
+        "mask_present_5_x": 435.6000061035156,
+        "mask_present_5_y": 481.3999938964844,
+        "mask_present_help_scale": 0.800000011920929,
+        "mask_present_help_spacing": 0,
+        "mask_present_help_x": -5.699999809265137,
+        "mask_present_help_y": 210.60000610351562,
+        "mask_present_native": true
+      },
+      {
+        "mask_present_1_scale": 0.5299999713897705,
+        "mask_present_1_x": -8.899999618530273,
+        "mask_present_1_y": 53.5,
+        "mask_present_3_scale": 0.6000000238418579,
+        "mask_present_3_x": -36.79999923706055,
+        "mask_present_3_y": -93.5999984741211,
+        "mask_present_4_scale": 1,
+        "mask_present_4_x": -512,
+        "mask_present_4_y": 435.6000061035156,
+        "mask_present_5_scale": 1,
+        "mask_present_5_x": 435.6000061035156,
+        "mask_present_5_y": 481.3999938964844,
+        "mask_present_help_scale": 0.7200000286102295,
+        "mask_present_help_spacing": 0,
+        "mask_present_help_x": -5.699999809265137,
+        "mask_present_help_y": 210.60000610351562,
+        "mask_present_native": true
+      }
+    ],
+    "mask_description": [
+      {
+        "mask_present_6_x": 0,
+        "mask_present_6_y": -8.100000381469727,
+        "mask_present_6_scale": 0.7599999904632568
+      },
+      {
+        "mask_present_6_x": 0,
+        "mask_present_6_y": 0,
+        "mask_present_6_scale": 1
+      }
+    ]
+  }
 }

@@ -26,6 +26,7 @@ public:
     Profiles::Profile profile;
     vk::ImageView View() const { return view; }
     vk::Image Image() const { return image; }
+    vk::ImageView DepthSampleView();
     std::array<vk::Image, 2> Attachments() const { return {image, depth_image}; }
     unsigned Width() const { return width; }
     unsigned Height() const { return height; }
@@ -46,6 +47,7 @@ private:
     vk::Image depth_image{};
     vk::DeviceMemory depth_memory{};
     vk::ImageView depth_view{};
+    vk::ImageView depth_sample_view{};
     bool with_depth{};
     unsigned width{}, height{};
     bool visible{};

@@ -2,6 +2,8 @@
 #pragma once
 #include <array>
 #include <atomic>
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -9,12 +11,13 @@
 namespace MM3D::SimpleCheats {
 using U32=std::uint32_t;
 enum Action : unsigned { Rupees500, Rupees0, Heal, Hearts20, Magic, Masks, Items,
-    Defense, Gilded, Razor, Songs, Bags, Count };
+    Defense, Gilded, Razor, Songs, Bags, DungeonKeys, Count };
 inline constexpr std::array<const char*,Count> Labels{
     "500 rupees", "0 rupees", "Refill hearts", "20 hearts + refill", "Refill magic",
     "All masks", "All items", "Enhanced defense",
     "Mirror Shield + Gilded Sword", "Mirror Shield + Razor Sword",
-    "All boss remains and songs", "Largest quiver and bomb bag"};
+    "All boss remains and songs", "Largest quiver and bomb bag",
+    "All dungeon small keys + boss keys"};
 inline constexpr std::array<const char*,Count> Help{
     "Sets carried rupees to 500.", "Clears carried rupees and pending rupee changes.",
     "Refills health to your current maximum.", "Sets maximum health to 20 hearts and refills it.",
@@ -23,7 +26,8 @@ inline constexpr std::array<const char*,Count> Help{
     "Enables enhanced defense.", "Sets sword and shield equipment; reopen the equipment screen to refresh it.",
     "Sets sword and shield equipment; reopen the equipment screen to refresh it.",
     "Grants the four remains and song flags; preserves heart pieces and notebook progress.",
-    "Upgrades quiver and bomb bag capacity; preserves wallet, stick and nut upgrades."};
+    "Upgrades quiver and bomb bag capacity; preserves wallet, stick and nut upgrades.",
+    "Gives 99 small keys and the boss key for each of the four temples. Preserves maps, compasses and stray fairies."};
 struct Ammo {const char* label;U32 count;U32 slot;U32 item;U32 amount;};
 // USA Restoration uses the 0x775xxx save layout, not the supplied v1.1
 // 0x776xxx layout. Inventory IDs and equipment masks match game/common_data.h.
@@ -38,8 +42,9 @@ inline constexpr std::array<Ammo,7> Ammunition{{
 }};
 inline std::atomic<U32> pending{0}, continuous{0};
 inline std::atomic<bool> ready{false};
+inline std::atomic<bool> moon_jump{false};
 inline std::atomic<int> result{0}; // 0 idle, 1 applied, -1 not in a supported save.
-inline void Reset(){pending=0;continuous=0;ready=false;result=0;}
+inline void Reset(){pending=0;continuous=0;ready=false;moon_jump=false;result=0;}
 inline void Queue(Action a){if(a<Count)pending.fetch_or(1u<<a);}
 inline constexpr std::array<std::pair<U32,U32>,7> Guards{{
     {0x4bfab4,0xe92d4ff0},{0x4bfabc,0xe1a04000},{0x4bfdbc,0x7752d8},
@@ -68,6 +73,21 @@ template<class M> void FillMagic(M& m) {
     auto unlocked=Get(m,0x77531e,1),upgrade=Get(m,0x77531f,1);
     if(unlocked&&*unlocked&&upgrade)Set(m,0x775317,*upgrade?96:48,1);
 }
+// Called from Restoration's guarded pad-update hook, once per game update.
+// The slow general cheat timer is unsuitable for a steady ascent. Only change
+// vertical velocity: releasing the chord leaves native gravity/collision intact.
+template<class M> void MoonJump(M& m) {
+    if(!moon_jump || !CodeMatches(m) || !InGame(m))return;
+    const auto buttons=m.Read(0x72a008);
+    if(!buttons || (*buttons&0x201)!=0x201)return; // L + A
+    const auto context=m.Read(0x72f5c0),game=m.Read(*context+0x16c);
+    const auto pause=Get(m,*game+0xaac,2),player=m.Read(*game+0x20dc);
+    if(!pause || (*pause&3) || !player || *player<0x100000 || *player>0x3ffe0000 || (*player&3))return;
+    const auto id=m.Read(*player),flags=m.Read(*player+0x11db0),speed=m.Read(*player+0x68);
+    if(!id || (*id&0xffffff)!=0x020000 || !flags || (*flags&0x30800081) || !speed ||
+       !std::isfinite(std::bit_cast<float>(*speed)) || Get(m,0x775314,2).value_or(0)==0)return;
+    m.Write(*player+0x68,std::bit_cast<U32>(12.f));
+}
 template<class M> void Apply(M& m,Action action) {
     switch(action) {
     case Rupees500: case Rupees0:
@@ -89,6 +109,14 @@ template<class M> void Apply(M& m,Action action) {
     case Bags:
         if(auto upgrades=m.Read(0x7753cc))m.Write(0x7753cc,(*upgrades&~63u)|27u);
         break;
+    case DungeonKeys:
+        // Native item-grant code indexes these arrays at 0x233f30/0x233f4c.
+        // Bit 0 is the boss key; the remaining dungeon-item bits stay intact.
+        for(U32 i=0;i<4;++i) {
+            Set(m,0x7753d4+i,Get(m,0x7753d4+i,1).value_or(0)|1u,1);
+            Set(m,0x7753de + i,99,1);
+        }
+        break;
     default:break;
     }
 }
@@ -98,6 +126,10 @@ template<class M> void Tick(M& m,bool supported_title) {
     // Preflight every save word used by these cheats before making any writes.
     if(supported)for(U32 at=0x775300;at<=0x7753d0;at+=4)if(!m.Read(at)){supported=false;break;}
     if(supported&&!m.Read(0x7751fc))supported=false;
+    if(supported && (requests&(1u<<DungeonKeys))) {
+        if(m.Read(0x234b18)!=0x7753d4u || m.Read(0x234b1c)!=0x7753deu)supported=false;
+        for(U32 at=0x7753d4;at<=0x7753e0;at+=4)if(!m.Read(at))supported=false;
+    }
     ready=supported;
     if(!supported){if(requests)result=-1;return;}
     for(unsigned i=0;i<Count;++i)if(requests&(1u<<i))Apply(m,Action(i));

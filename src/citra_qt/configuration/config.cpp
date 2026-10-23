@@ -12,6 +12,7 @@
 #include "citra_qt/fullscreen_shortcut.h"
 #include "citra_qt/setting_qkeys.h"
 #include "common/file_util.h"
+#include "common/param_package.h"
 #include "common/settings.h"
 #include "core/hle/service/service.h"
 #include "input_common/main.h"
@@ -33,6 +34,7 @@ const std::array<int, Settings::NativeButton::NumButtons> QtConfig::default_butt
     Qt::Key_A, Qt::Key_S, Qt::Key_Z, Qt::Key_X, Qt::Key_T, Qt::Key_G,
     Qt::Key_F, Qt::Key_H, Qt::Key_Q, Qt::Key_W, Qt::Key_M, Qt::Key_N,
     Qt::Key_O, Qt::Key_P, Qt::Key_1, Qt::Key_2, Qt::Key_B, Qt::Key_V,
+    Qt::Key_3, Qt::Key_4,
 };
 
 const std::array<std::array<int, 5>, Settings::NativeAnalog::NumAnalogs> QtConfig::default_analogs{{
@@ -411,6 +413,21 @@ void QtConfig::ReadControlValues() {
                     .toStdString();
             if (profile.analogs[i].empty())
                 profile.analogs[i] = default_param;
+        }
+        // Older profiles have no auxiliary click keys. Derive just those two
+        // bindings from their SDL controller, retaining every explicit mapping.
+        // This mapping is pure and also works before the SDL backend starts.
+        for (int side = 0; side < 2; ++side) {
+            const int button = Settings::NativeButton::LeftStickClick + side;
+            if (qt_config->contains(QString::fromUtf8(Settings::NativeButton::mapping[button])))
+                continue;
+            Common::ParamPackage controller(profile.analogs[side]);
+            if (controller.Get("engine", "") != "sdl" || controller.Get("api", "") != "controller")
+                controller = Common::ParamPackage(profile.buttons[Settings::NativeButton::A]);
+            if (controller.Get("engine", "") == "sdl" && controller.Get("api", "") == "controller") {
+                const auto binding = InputCommon::GetControllerButtonBinds(controller, button);
+                if (binding.Has("engine")) profile.buttons[button] = binding.Serialize();
+            }
         }
         profile.motion_device =
             ReadSetting(Settings::QKeys::motion_device,

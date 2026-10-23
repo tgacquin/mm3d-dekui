@@ -3,6 +3,9 @@
 // Refer to the license.txt file included.
 
 #include <cstring>
+#ifdef ENABLE_MM3D_PRESENTATION
+#include "mm3d/translation.h"
+#endif
 #include <memory>
 #include <span>
 #include <cryptopp/aes.h>
@@ -635,6 +638,14 @@ Loader::ResultStatus NCCHContainer::ReadRomFS(std::shared_ptr<RomFSReader>& romf
     } else {
         romfs_file = std::move(direct_romfs);
     }
+
+#ifdef ENABLE_MM3D_PRESENTATION
+    const auto translation = MM3D::Translation::RomFS();
+    if (!is_proto && use_layered_fs && GetModId(ncch_header.program_id) == 0x0004000000125500ULL &&
+        !translation.empty()) {
+        romfs_file = std::make_shared<LayeredFS>(std::move(romfs_file), translation, "");
+    }
+#endif
 
     return Loader::ResultStatus::Success;
 }

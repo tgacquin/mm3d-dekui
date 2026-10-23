@@ -43,6 +43,7 @@
 #include "mm3d/fast_time.h"
 #include "mm3d/prices.h"
 #include "mm3d/single_screen_text.h"
+#include "mm3d/stick_controls.h"
 #include "mm3d/notebook.h"
 #include "mm3d/notebook_inspector.h"
 #include "mm3d/profiles.h"
@@ -73,6 +74,7 @@
 #include "mm3d/owl_sword.h"
 #include "mm3d/owl_intro.h"
 #include "mm3d/simple_cheats.h"
+#include "mm3d/photo_capture.h"
 #include "mm3d/bomber_approach.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include <imgui.h>
@@ -113,13 +115,16 @@ void ApplyPresentationSettings(const Settings& settings) {
     PlayerHud::ApplyCarrots(settings.carrots);
     PlayerHud::ApplyDpadPosition(settings.dpad_offset_x,settings.dpad_offset_y);
     PlayerHud::ApplyMagicHeight(settings.magic_bar_height);
-    AudioCore::HLE::accurate_audio.store(settings.accurate_hle_audio);
+    AudioCore::HLE::accuracy_mode.store(static_cast<AudioCore::HLE::AccuracyMode>(settings.hle_audio_accuracy));
     Music::muted.store(settings.mute_music);
     Music::disable_low_health_beep.store(settings.disable_low_health_beep);
     TatlReminders::disabled.store(settings.disable_tatl_reminders);
     SingleScreenText::enabled.store(settings.single_screen_text);
+    StickControls::Configure(settings.stick_click_controls);
     BloomSampling::enabled.store(settings.fix_bloom);
     Fog::disabled.store(settings.disable_fog);
+    DepthOfField::Apply(settings.depth_of_field);
+    AmbientOcclusion::Apply(settings.ambient_occlusion);
     ClassicSaving::enabled.store(settings.classic_saving);
     ClassicDoubleTime::enabled.store(settings.classic_double_time);
     OwlSword::enabled.store(settings.sword_activate_owls);
@@ -520,6 +525,8 @@ Overlay::Overlay(const Vulkan::Instance& instance, vk::Format format, unsigned i
 #endif
     }
     HudAdjustments::minimap_visibility_request.store(-1);
+    PhotoCapture::enabled.store(state.settings.hd_pictograph_photos);
+    PhotoCapture::layout.store(0);
     ApplyPresentationSettings(state.settings);
     const auto inventory_restore=InventoryMenu::RestoreLegacy();
     if(!inventory_restore.isEmpty()) state.status=inventory_restore;
@@ -717,11 +724,13 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
 #endif
         };
         const auto audio_accuracy_controls=[&]() {
-            if(ImGui::Checkbox("Accurate HLE audio",&state.settings.accurate_hle_audio)) {
-                AudioCore::HLE::accurate_audio.store(state.settings.accurate_hle_audio);
+            int audio_mode=state.settings.hle_audio_accuracy==2?1:0;
+            if(ImGui::Combo("Audio mode",&audio_mode,"Balanced\0Accurate HLE\0")) {
+                state.settings.hle_audio_accuracy=audio_mode+1;
+                AudioCore::HLE::accuracy_mode.store(static_cast<AudioCore::HLE::AccuracyMode>(state.settings.hle_audio_accuracy));
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Audio settings saved":"Audio settings save FAILED";
             }
-            hover_help("Corrects rupee sounds, audio may sound more muffled but is closer to how it sounds on 3DS");
+            hover_help("Balanced keeps the usual audio processing, with accurate decoding and resampling for rupee pickup, counter and falling tones. Effects reusing those samples also receive the correction. Accurate HLE applies accurate decoding and resampling to all audio. Changes apply as each sound starts its next buffer.");
             if(ImGui::Checkbox("Mute music",&state.settings.mute_music)) {
                 Music::muted.store(state.settings.mute_music);
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Audio settings saved":"Audio settings save FAILED";
@@ -755,6 +764,51 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             }
             hover_help("Removes distance fog. As fog is used for atmospheric effect, it is not recommended to disable it.");
         };
+        const auto photo_control = [&]() {
+            if(ImGui::Checkbox("HD Pictograph photos (restart required)",&state.settings.hd_pictograph_photos)) {
+                state.status=state.settings.Save(state.directory+"presentation.json")?
+                    "Photo setting saved. Restart the game to apply.":"Photo setting save FAILED";
+            }
+            hover_help("Captures and displays widescreen photos at the rendering resolution. Disable if taking or viewing HD photos causes crashes or stalls. After restarting, native photos are used and HD capture, loading and saving are bypassed. Previously saved HD files are kept.");
+        };
+#if !defined(ENABLE_MM3D_GAME_FOLDER) && !defined(__ANDROID__)
+        const auto depth_of_field_control = [&]() {
+            auto& o=state.settings.depth_of_field;
+            bool changed=ImGui::Checkbox("Depth of field",&o.enabled);
+            hover_help("Softens distant scenery while keeping nearby objects and the HUD sharp. Requires Vulkan. May reduce performance, especially at high resolutions.");
+            if(o.enabled) {
+                changed|=ImGui::SliderFloat("Focus distance",&o.focus,50.f,4000.f,"%.0f");
+                hover_help("Objects closer than this distance stay sharp. Larger values keep more of the scene in focus.");
+                changed|=ImGui::SliderFloat("Focus transition",&o.transition,100.f,6000.f,"%.0f");
+                hover_help("Distance over which the background gradually reaches full blur.");
+                changed|=ImGui::SliderFloat("Blur strength",&o.strength,0.f,4.f,"%.2f");
+                if(ImGui::Button("Reset depth of field")){o=DepthOfField::Options{};o.enabled=true;changed=true;}
+            }
+            if(changed) {
+                DepthOfField::Apply(o);
+                state.status=state.settings.Save(state.directory+"presentation.json")?
+                    "Graphics settings saved":"Graphics settings save FAILED";
+                if(inspection_paused.load())step_requested.store(true);
+            }
+        };
+        const auto ambient_occlusion_control = [&]() {
+            auto& o=state.settings.ambient_occlusion;
+            bool changed=ImGui::Checkbox("Ambient occlusion",&o.enabled);
+            hover_help("Adds soft contact shading where visible surfaces meet. Requires Vulkan. May reduce performance; screen-space shading can change near screen edges.");
+            if(o.enabled) {
+                changed|=ImGui::SliderFloat("Occlusion strength",&o.strength,0.f,1.5f,"%.2f");
+                changed|=ImGui::SliderFloat("Occlusion radius",&o.radius,5.f,150.f,"%.0f");
+                hover_help("Size of the area around a surface that contributes contact shading.");
+                if(ImGui::Button("Reset ambient occlusion")){o=AmbientOcclusion::Options{};o.enabled=true;changed=true;}
+            }
+            if(changed) {
+                AmbientOcclusion::Apply(o);
+                state.status=state.settings.Save(state.directory+"presentation.json")?
+                    "Graphics settings saved":"Graphics settings save FAILED";
+                if(inspection_paused.load())step_requested.store(true);
+            }
+        };
+#endif
         const auto bloom_control = [&]() {
             if (ImGui::Checkbox("Fix bloom", &state.settings.fix_bloom)) {
                 BloomSampling::enabled.store(state.settings.fix_bloom);
@@ -815,7 +869,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             percent_control("Overall HUD opacity",hud.opacity,1.f,"Adjusts all gameplay HUD elements, including the minimap. Combines with minimap opacity and the game's own fades.");
             if(!PlayerOverlay()) {
                 changed|=ImGui::Checkbox("Hide minimap",&hud.hide_minimap);
-                help_text("Hold ZR and press SELECT during gameplay to hide or show the minimap.");
+                help_text(state.settings.stick_click_controls?"Click the left stick during gameplay to hide or show the minimap.":"Hold ZR and press SELECT during gameplay to hide or show the minimap.");
             }
             if(ImGui::BeginTabBar("HUD options")) {
                 if(ImGui::BeginTabItem("Elements")) {
@@ -859,9 +913,10 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                                 if(i==HudAdjustments::Minimap)state.settings.minimap_opacity=.85f;changed=true;}
                             if(i==HudAdjustments::Buttons) {
                                 for(unsigned b=0;b<6;++b)if(ImGui::TreeNode(HudAdjustments::ButtonLabels[b])) {
-                                    changed|=ImGui::SliderInt("X position",&hud.button_x[b],-400,400,"%+d",ImGuiSliderFlags_AlwaysClamp);
-                                    changed|=ImGui::SliderInt("Y position",&hud.button_y[b],-240,240,"%+d",ImGuiSliderFlags_AlwaysClamp);
-                                    if(ImGui::Button("Reset button")){hud.button_x[b]=hud.button_y[b]=0;changed=true;}
+                                    const auto slot=StickControls::ItemLayoutIndex(b,2);
+                                    changed|=ImGui::SliderInt("X position",&hud.button_x[slot],-400,400,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                                    changed|=ImGui::SliderInt("Y position",&hud.button_y[slot],-240,240,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                                    if(ImGui::Button("Reset button")){hud.button_x[slot]=hud.button_y[slot]=0;changed=true;}
                                     ImGui::TreePop();
                                 }
                                 if(ImGui::Button("Reset all button positions")){hud.button_x={};hud.button_y={};changed=true;}
@@ -891,6 +946,11 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             }
         };
         const auto text_controls=[&]() {
+            if(ImGui::Checkbox("Use stick-click controls",&state.settings.stick_click_controls)) {
+                StickControls::Configure(state.settings.stick_click_controls);
+                state.status=state.settings.Save(state.directory+"presentation.json")?"Controls saved":"Controls save FAILED";
+            }
+            help_text("ZL: Item I. ZR: Item II. Right stick click: first-person / pictograph. Left stick click: hide / show minimap. Bind stick clicks in the controller configuration.");
             if(ImGui::Checkbox("Hide item menu button prompts",&state.settings.player_hud.hide_menu_prompts)) {
                 HudAdjustments::hide_menu_prompts.store(state.settings.player_hud.hide_menu_prompts);
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Controls saved":"Controls save FAILED";
@@ -900,7 +960,32 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 SingleScreenText::enabled.store(state.settings.single_screen_text);
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Text setting saved":"Text setting save FAILED";
             }
-            help_text("Updates English game instructions for buttons and a single screen. Applies when a message is next opened.");
+            help_text("Updates English, French and Spanish game instructions for the selected controls and a single screen. Applies when a message is next opened.");
+            ImGui::SeparatorText("Fan translation");
+#ifndef ANDROID
+            if(ImGui::Button("Import translation folder...")) Translation::import_requested.store(true);
+#endif
+            static unsigned translation_revision=0;
+            static bool translation_enabled=false, translation_installed=false;
+            const auto revision=Translation::preferences_revision.load();
+            const auto directory=state.directory.toStdString();
+            if(translation_revision!=revision) {
+                translation_enabled=Translation::Requested(directory);
+                translation_installed=Translation::Installed(directory);
+                translation_revision=revision;
+            }
+            ImGui::BeginDisabled(!translation_installed && !translation_enabled);
+            if(ImGui::Checkbox("Use imported translation (restart required)",&translation_enabled)) {
+                if(Translation::SetEnabled(directory,translation_enabled))
+                    state.status="Translation preference saved. Restart the game to apply.";
+                else {
+                    translation_enabled=Translation::Requested(directory);
+                    state.status="Translation could not be enabled. Import the folder again.";
+                }
+            }
+            ImGui::EndDisabled();
+            help_text("Imports USA-compatible translation packs in any language. Only messages changed by enabled DekUI features use English fallback: controls, classic save/time dialogue and multiplied shop prices. Other text stays translated. Importing or toggling takes effect when you restart the game.");
+            ImGui::TextUnformatted(Translation::active.load() ? "Imported translation active this session" : "Standard resources active this session");
         };
         const auto general_controls=[&]() {
 #ifdef ENABLE_MM3D_GAME_FOLDER
@@ -914,7 +999,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                     menu_reset_status="Menu layouts reset. Previous settings backed up.";
                 } else menu_reset_status="Could not reload reset settings. Restart Dekui.";
             }
-            hover_help("Restores the Songs, file-select and item-selection layouts to this release's defaults. Keeps gameplay settings, controls and HUD preferences. Backs up your previous settings.");
+            hover_help("Restores the Songs, file-select, item-selection, mask-selection and Gear photo layouts to this release's defaults. Keeps gameplay settings, controls and HUD preferences. Backs up your previous settings.");
             if(!menu_reset_status.isEmpty())ImGui::TextWrapped("%s",menu_reset_status.toUtf8().constData());
 #endif
             startup_hint_control();
@@ -1004,9 +1089,16 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             for(unsigned i=0;i<Count;++i) {
                 if(i==0)ImGui::SeparatorText("Health, magic and rupees");
                 if(i==Masks)ImGui::SeparatorText("Inventory and gear");
+                if(i==DungeonKeys)ImGui::SeparatorText("Dungeon keys");
                 if(ImGui::Button(Labels[i]))Queue(Action(i));
                 hover_help(Help[i]);
             }
+            ImGui::EndDisabled();
+            ImGui::SeparatorText("Movement");
+            bool moon=moon_jump.load();
+            ImGui::BeginDisabled(!available&&!moon);
+            if(ImGui::Checkbox("Moon jump (hold L + A)",&moon))moon_jump=moon;
+            hover_help("Hold L + A to rise; release to fall normally. Session only. Inactive during pause, locked actions and cutscenes.");
             ImGui::EndDisabled();
             ImGui::SeparatorText("Infinite resources");
             for(unsigned i=0;i<9;++i) {
@@ -1033,12 +1125,12 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Restoration setting saved":"Restoration save FAILED";
             }
             hover_help("Stops Bombers running up to offer rumors. You can still talk to them yourself.");
-            if(ImGui::Checkbox("Activate owl statues with a sword",&state.settings.sword_activate_owls)) {
+            if(ImGui::Checkbox("Activate owl statues with a sword or stick",&state.settings.sword_activate_owls)) {
                 OwlSword::enabled.store(state.settings.sword_activate_owls);
                 OwlIntro::disabled.store(state.settings.sword_activate_owls);
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Restoration setting saved":"Restoration save FAILED";
             }
-            hover_help("Stops automatic activation when you approach and skips Tatl's statue hint. Strike an inactive owl statue with a sword to activate it, then press A to talk. Striking it does not open dialogue.");
+            hover_help("Stops automatic activation when you approach and skips Tatl's statue hint. Strike an inactive owl statue with a sword or Deku Stick to activate it, then press A to talk. Striking it does not open dialogue.");
             if(ImGui::Checkbox("Classic Song of Double Time",&state.settings.classic_double_time)) {
                 ClassicDoubleTime::enabled=state.settings.classic_double_time;
                 state.settings.Save(state.directory+"presentation.json");
@@ -1091,6 +1183,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 if(ImGui::SliderInt("Internal resolution",&factor,1,9,"%dx"))set_resolution.store(factor);
                 bloom_control();
                 fog_control();
+                photo_control();
                 bool sync=vsync.load()!=0;
                 if(ImGui::Checkbox("VSync",&sync))set_vsync.store(sync);
                 bool disk=cache.load()!=0;
@@ -1170,7 +1263,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 if(ImGui::Button("Fullscreen shortcut..."))PlayerSettings::fullscreen_shortcut.store(true);
                 if(ImGui::Button("Custom textures shortcut..."))PlayerSettings::textures_shortcut.store(true);
 #endif
-                help_text("Hold ZR and press SELECT during gameplay to hide or show the minimap. Game touchscreen input is disabled.");
+                help_text(state.settings.stick_click_controls?"Click the left stick during gameplay to hide or show the minimap. Game touchscreen input is disabled.":"Hold ZR and press SELECT during gameplay to hide or show the minimap. Game touchscreen input is disabled.");
                 ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("About")) {
@@ -1197,7 +1290,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
         else {
         if(ImGui::BeginTabBar("Editor settings")) {
         if(ImGui::BeginTabItem("General")){general_controls();ImGui::EndTabItem();}
-        if(ImGui::BeginTabItem("Graphics")){interpolation_control();actor_distance_control();fog_control();ImGui::EndTabItem();}
+        if(ImGui::BeginTabItem("Graphics")){interpolation_control();actor_distance_control();fog_control();photo_control();depth_of_field_control();ambient_occlusion_control();ImGui::EndTabItem();}
         if(ImGui::BeginTabItem("Camera")) {
         if(ImGui::CollapsingHeader("Live game camera")) {
             bool inspect=CameraLive::enabled.load();
@@ -1560,12 +1653,12 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 changed|=ImGui::SliderFloat("Diamond rotation",&o.diamond.rotation,-180,180,"%.1f degrees");
                 ImGui::TextWrapped("Spacing 0 stacks all four at the center. Button size is independent. Turn diamond off to restore individual positions.");
             }
-            constexpr const char* names[]{"A button","X button","Y button","B button","Item I (ZR + X)","Item II (ZR + Y)"};
+            const char* names[]{"A button","X button","Y button","B button",state.settings.stick_click_controls?"Item I (ZL)":"Item I (ZR + X)",state.settings.stick_click_controls?"Item II (ZR)":"Item II (ZR + Y)"};
             for(unsigned i=0;i<HudButtons::Count;++i){if(o.diamond.enabled&&i!=0&&i!=3)continue;ImGui::PushID(int(i)+2300);
-                if(ImGui::TreeNode(names[i])){auto& p=o.buttons[i];
+                if(ImGui::TreeNode(names[i])){const auto slot=StickControls::ItemLayoutIndex(i,4);auto& p=o.buttons[slot];
                     changed|=ImGui::SliderFloat("X offset",&p.x,-512,512,"%.1f");
                     changed|=ImGui::SliderFloat("Y offset",&p.y,-240,240,"%.1f");
-                    if(ImGui::Button("Reset button")){p=HudButtons::Default()[i];changed=true;}
+                    if(ImGui::Button("Reset button")){p=HudButtons::Default()[slot];changed=true;}
                     ImGui::TreePop();}ImGui::PopID();}
             for(unsigned i=0;i<3;++i){ImGui::PushID(int(i)+2400);
                 ImGui::Text("Layout %u%s",i+1,o.saved[i]?"":" (empty)");ImGui::SameLine();

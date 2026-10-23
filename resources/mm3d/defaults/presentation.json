@@ -1,5 +1,6 @@
 {
   "single_screen_text": true,
+  "stick_click_controls": false,
   "fix_bloom": true,
   "interpolation_60fps": true,
   "interpolation_cpu_vertices": true,
@@ -665,5 +666,6 @@
   "cutscene_camera_fov": 49,
   "gear_6_x": 78.69999694824219,
   "gear_6_y": -20.600000381469727,
-  "gear_6_scale": 0.8799999952316284
+  "gear_6_scale": 0.8799999952316284,
+  "hd_pictograph_photos": true
 }

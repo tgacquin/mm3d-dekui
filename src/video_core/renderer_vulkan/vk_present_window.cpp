@@ -331,6 +331,13 @@ void PresentWindow::Present(Frame* frame) {
         present_queue.push(frame);
         frame_cv.notify_one();
     });
+    // The next operation may acquire another frame without recording any GPU
+    // work (the native half of an interpolated pair). With two frames and one
+    // retained for paused redraws, that acquisition waits for this handoff to
+    // release the retained frame. Dispatch now rather than leaving the callback
+    // buffered on the waiting render thread. Worker ordering still puts it after
+    // the render-ready submission; no GPU completion wait is needed.
+    scheduler.DispatchWork();
 }
 
 void PresentWindow::WaitPresent() {

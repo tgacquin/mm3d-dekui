@@ -3,7 +3,9 @@ import copy
 import json
 import math
 
-VERSION = 1
+# Re-run for installations that already migrated their photo placement but
+# retained serialized mask fallbacks and the former shipped HUD defaults.
+VERSION = 3
 CONFIG = 'config/mm3d-local/presentation.json'
 BASELINE = 'setup/layout-baseline.json'
 RESOURCE = 'layout-migration.json'
@@ -12,6 +14,11 @@ GROUPS = {
     'file_select': ('file_select_',),
     'item_selection': ('item_present_',),
     'gear_photo': ('gear_6_',),
+    'mask_selection': ('mask_present_1_', 'mask_present_3_', 'mask_present_4_',
+                       'mask_present_5_', 'mask_present_help_', 'mask_present_native'),
+    'mask_description': ('mask_present_6_',),
+    'magic_height': ('magic_bar_height',),
+    'minimap_opacity': ('minimap_opacity',),
 }
 
 
@@ -55,7 +62,11 @@ def migrate(raw, data):
         # not isolated fields of a customized layout.
         expected = dict(old)
         expected.update(data['legacy_fallbacks'])
-        if all(k not in obj or close(obj[k], expected.get(k, current[k])) or close(obj[k], current[k]) for k in keys):
+        # Older loaders serialized inherited item/dialogue settings into the
+        # new mask keys. Recognize only documented complete fallback groups.
+        candidates = [expected, *data.get('legacy_group_defaults', {}).get(name, [])]
+        if any(all(k not in obj or close(obj[k], candidate.get(k, current[k])) or
+                   close(obj[k], current[k]) for k in keys) for candidate in candidates):
             for k in keys:
                 obj[k] = current[k]
         else:

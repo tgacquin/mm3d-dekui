@@ -208,8 +208,7 @@ Common::ParamPackage GetControllerButtonBinds(const Common::ParamPackage& params
     const auto native_button{static_cast<Settings::NativeButton::Values>(button)};
     const auto engine{params.Get("engine", "")};
     if (engine == "sdl") {
-        return dynamic_cast<SDL::SDLState*>(sdl.get())->GetSDLControllerButtonBind(params,
-                                                                                   native_button);
+        return SDL::SDLState::GetSDLControllerButtonBind(params, native_button);
     }
 #ifdef ENABLE_GCADAPTER
     if (engine == "gcpad") {

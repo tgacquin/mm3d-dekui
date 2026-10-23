@@ -33,6 +33,7 @@
 #include "mm3d/world_map_prompt.h"
 #include "mm3d/menu_tabs.h"
 #include "mm3d/pause_capture.h"
+#include "mm3d/photo_capture.h"
 #include "mm3d/visibility_depth.h"
 #include "mm3d/native_notebook.h"
 #include "mm3d/native_file_select.h"
@@ -58,6 +59,8 @@
 #include "mm3d/menu_backdrop.h"
 #include "mm3d/screen_shrink.h"
 #include "mm3d/single_screen_text.h"
+#include "mm3d/stick_controls.h"
+#include "mm3d/simple_cheats.h"
 #include "mm3d/prices.h"
 #include "mm3d/menu_sound.h"
 #include "mm3d/music.h"
@@ -136,8 +139,43 @@ public:
     MM3D::MenuPageSwitch::Hook menu_page_switch;
     MM3D::MenuMemory::Hook menu_memory;
     MM3D::MenuBackdrop::Hook menu_backdrop;
+    // Temporary editor-only observation of pause ownership and capture lifetime.
+    // Never stop the emulator or write guest state; log only bounded changes.
+#if !defined(ENABLE_MM3D_GAME_FOLDER) && !defined(__ANDROID__)
+    std::array<std::array<u32,18>,3> backdrop_trace_previous{};
+    std::array<unsigned,3> backdrop_trace_count{};
+#endif
+    template<class M> void TraceMenuBackdrop(M& m,unsigned phase) {
+#if !defined(ENABLE_MM3D_GAME_FOLDER) && !defined(__ANDROID__)
+        if(phase>=backdrop_trace_count.size()||backdrop_trace_count[phase]>=128)return;
+        using H=MM3D::MenuBackdrop::Hook;
+        using MM3D::NativeInventory::Pointer;
+        constexpr u32 ctx=MM3D::MenuBackdrop::ScreenContext;
+        const u32 g=H::Game(m,ctx),current=m.Read(ctx+8).value_or(0);
+        if(!g)return;
+        const bool menu=H::Page(m,current)||m.Read(0x656b10)==current||m.Read(0x656b18)==current;
+        if(!menu&&!menu_backdrop.owner)return;
+        const u32 capture=m.Read(0x66889c).value_or(0),graphics=m.Read(g+0x100).value_or(0);
+        const auto picture=H::Source(m,g,false);
+        auto state=[&](u32 p){return Pointer(p,0x188)?MM3D::MenuPageSwitch::Byte(m,p+0x186).value_or(~0u):~0u;};
+        const std::array<u32,18> now{
+            g,current,m.Read(ctx+12).value_or(0),m.Read(g+0xaac).value_or(~0u),
+            menu_backdrop.owner,menu_backdrop.page,capture,state(capture),graphics,state(graphics),
+            m.Read(g+0x11018).value_or(0),u32(H::Ready(m,g)),u32(picture.has_value()),
+            u32(menu_backdrop.Active(m)),
+            picture?picture->geometry[0]:0,picture?picture->geometry[1]:0,
+            picture?m.Read(picture->geometry[0]+0x10).value_or(0):0,
+            picture?m.Read(picture->geometry[1]+0x10).value_or(0):0};
+        if(backdrop_trace_count[phase]&&now==backdrop_trace_previous[phase])return;
+        backdrop_trace_previous[phase]=now;++backdrop_trace_count[phase];
+        LOG_INFO(Core_ARM11,"MM3D pause trace: phase={} frame={} game={:08X} current={:08X} pending={:08X} flags={:08X} owner={:08X} owned_page={:08X} capture={:08X}/{} graphics={:08X}/{} textures={:08X} ready={} source={} active={} geometry={:08X},{:08X} bound={:08X},{:08X}",
+            phase,MM3D::guest_frames.load(),now[0],now[1],now[2],now[3],now[4],now[5],
+            now[6],now[7],now[8],now[9],now[10],now[11],now[12],now[13],now[14],now[15],now[16],now[17]);
+#endif
+    }
     u32 menu_sound_context=0;
     MM3D::PauseCapture::Hook pause_capture_hook;
+    MM3D::PhotoCapture::Hook photo_capture_hook;
     MM3D::VisibilityDepth::Hook visibility_depth_hook;
     MM3D::NativeNotebook::Hook notebook_hook;
     MM3D::NativeFileSelect::Hook file_select_hook;
@@ -158,6 +196,7 @@ public:
     MM3D::NativeStartup::PressHook press_hook;
     MM3D::NativeStartup::LoadingIconHook loading_icon_hook;
     MM3D::ItemPreview::Hook item_preview_hook;
+    MM3D::StickControls::Hook stick_controls_hook;
     MM3D::ClassicSaving::Hook classic_save_hook;
     MM3D::DeathPenalties::RespawnSound death_respawn_sound;
     MM3D::ClassicSaving::OwlDraw classic_owl_draw;
@@ -211,6 +250,12 @@ public:
             const auto process=parent.system.Kernel().GetCurrentProcess();
             if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::ClassicSaving::CodeMatches(code))
                 return MM3D::ClassicSaving::Instruction(vaddr,*instruction);
+        }
+        if(instruction&&MM3D::StickControls::Instruction(vaddr,*instruction)!=*instruction) {
+            struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
+            const auto process=parent.system.Kernel().GetCurrentProcess();
+            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::StickControls::CodeMatches(code,vaddr))
+                return MM3D::StickControls::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MinimapShortcut::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
@@ -435,6 +480,12 @@ public:
             if (process && process->codeset && process->codeset->program_id == MM3D::VisibilityDepth::Title &&
                 MM3D::VisibilityDepth::CodeMatches(code))
                 return MM3D::VisibilityDepth::Instruction(vaddr, *instruction);
+        }
+        if(instruction&&MM3D::PhotoCapture::Instruction(vaddr,*instruction)!=*instruction) {
+            struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
+            const auto process=parent.system.Kernel().GetCurrentProcess();
+            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::PhotoCapture::CodeMatches(code))
+                return MM3D::PhotoCapture::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::PauseCapture::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
@@ -675,6 +726,18 @@ public:
             }
             return;
         }
+        if(swi==MM3D::StickControls::PadSVC||swi==MM3D::StickControls::MapSVC) {
+            struct GuestMemory {Memory::MemorySystem& memory;
+                std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}
+                void Write(u32 at,u32 value){memory.Write32(at,value);}} guest{memory};
+            auto& r=parent.jit->Regs();
+            if(swi==MM3D::StickControls::PadSVC) {
+                stick_controls_hook.Pad(guest,r);
+                MM3D::SimpleCheats::MoonJump(guest);
+            }
+            else stick_controls_hook.Map(guest,r);
+            return;
+        }
         if(swi==MM3D::MinimapShortcut::SVC) {
             struct GuestMemory {Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} guest{memory};
@@ -875,12 +938,16 @@ public:
             else r[0]=MM3D::OwlIntro::TatlFlags(memory.Read8(r[0]+0x2d3));
             return;
         }
-        if(swi==MM3D::OwlSword::FirstSVC||swi==MM3D::OwlSword::FirstSVC+1) {
+        if(swi==MM3D::OwlSword::FirstSVC||swi==MM3D::OwlSword::FirstSVC+1||
+           swi==MM3D::OwlSword::TriggerSVC) {
             struct Guest {Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}
                 void Write(u32 at,u32 value){memory.Write32(at,value);}} guest{memory};
             auto& r=parent.jit->Regs();
-            if(swi==MM3D::OwlSword::FirstSVC) {
+            if(swi==MM3D::OwlSword::TriggerSVC) {
+                MM3D::OwlSword::StrikeTrigger(guest,r);
+            }
+            else if(swi==MM3D::OwlSword::FirstSVC) {
                 r[4]=r[0];
                 const auto before=guest.Read(r[4]+0x268);
                 MM3D::OwlSword::BlockFeatherAcceptance(guest,r[4],MM3D::ClassicSaving::enabled.load());
@@ -997,7 +1064,9 @@ public:
             switch(swi-MM3D::MenuPageSwitch::FirstSVC) {
             case 0:
                 menu_sound_context=r[0];
+                TraceMenuBackdrop(guest,0);
                 menu_backdrop.Tick(guest);
+                TraceMenuBackdrop(guest,1);
                 if(MM3D::MenuMemory::CodeMatches(guest))menu_memory.Tick(guest,r[0]);
                 menu_page_switch.Tick(guest,r[0],menu_backdrop.HasRetainedCapture()&&menu_backdrop.Active(guest));r[4]=r[0];break;
             case 1:
@@ -1045,13 +1114,24 @@ public:
             } else regs[15]=0x1adb90; // Replay the original BL for unsupported/disabled cases.
             return;
         }
+        if(swi>=MM3D::PhotoCapture::FirstSVC&&swi<MM3D::PhotoCapture::FirstSVC+4) {
+            struct ReadMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} guest{memory};
+            auto& r=parent.jit->Regs();
+            switch(swi-MM3D::PhotoCapture::FirstSVC) {
+            case 0: photo_capture_hook.Begin(r[6]);r[3]=memory.Read32(r[13]+4);break;
+            case 1: photo_capture_hook.Keep(guest);r[0]=memory.Read32(r[13]+12);break;
+            case 2: photo_capture_hook.Import(guest,r[4],r[5],r[6]);r[2]=r[4]+12;break;
+            case 3: photo_capture_hook.Bind(guest,r[0],r[1],r[2]);r[5]=r[1];break;
+            }
+            return;
+        }
         if(swi>=MM3D::PauseCapture::FirstSVC&&swi<MM3D::PauseCapture::FirstSVC+3) {
             struct ReadMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} guest{memory};
             auto& regs=parent.jit->Regs();
             switch(swi-MM3D::PauseCapture::FirstSVC) {
-            case 0: if(!menu_backdrop.HasRetainedCapture())pause_capture_hook.Convert(guest,regs[7],regs[8],regs[4],regs[5]);regs[0]=regs[7]+(regs[8]<<2);break;
+            case 0: photo_capture_hook.Convert(guest,regs[7],regs[8],regs[4],regs[5]);if(!menu_backdrop.HasRetainedCapture())pause_capture_hook.Convert(guest,regs[7],regs[8],regs[4],regs[5]);regs[0]=regs[7]+(regs[8]<<2);break;
             case 1: if(!menu_backdrop.HasRetainedCapture())pause_capture_hook.Bind(guest,regs[3],regs[2]);regs[12]=regs[0]+0x1c;break;
-            case 2: if(!menu_backdrop.HasRetainedCapture())pause_capture_hook.Reset();regs[4]=regs[0];break;
+            case 2: photo_capture_hook.Destroy(regs[0]);if(!menu_backdrop.HasRetainedCapture())pause_capture_hook.Reset();regs[4]=regs[0];break;
             }
             return;
         }
@@ -1065,6 +1145,7 @@ public:
             switch(swi-MM3D::NativeInventory::FirstSVC) {
             case 0: inventory_hook.Capture(guest,regs[0]); regs[4]=regs[0]; break;
             case 1: MM3D::ScreenShrink::Update(guest); if(MM3D::MenuBackdrop::CodeMatches(guest))menu_backdrop.Pass(guest,regs[0],regs[1]);
+                if(regs[1]==0)TraceMenuBackdrop(guest,2);
                 options_hook.Pass(guest,regs[0],regs[1]); song_reset_hook.Pass(guest,regs[0],regs[1]); double_time_hook.Pass(guest,regs[0],regs[1]); dungeon_map_hook.Pass(guest,regs[0],regs[1]); song_hook.Pass(guest,regs[0],regs[1]); ocarina_hook.Pass(guest,regs[0],regs[1]); item_present_hook.Pass(guest,regs[0],regs[1]);
                 if(regs[1]==4) MM3D::ItemSlideInterpolation::Publish({MM3D::guest_frames.load(),
                     MM3D::LinkPoseCapture::interpolation_generation.load(),item_present_hook.panel?item_present_hook.owner:0,

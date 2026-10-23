@@ -74,19 +74,22 @@ int main(int argc,char** argv) try {
       snapshot.write("{\"version\":1,\"enabled\":true,\"name\":\"not a profile\"}"); }
     Profiles::Load(directory.path().toStdString());
     Check(Profiles::List().empty(),"settings snapshots excluded from profile registry");
-    {
+    for(const int layout_version : {1, 2, 3}) {
         QTemporaryDir reset_directory;
         const auto user=reset_directory.path()+"/";
         QDir().mkpath(user+"setup");
         QFile settings(user+"presentation.json");Check(settings.open(QIODevice::WriteOnly),"reset fixture");
-        const QByteArray original="{\"version\":1,\"song_list_x\":99,\"damage_multiplier\":4,\"custom\":true}";
+        const QByteArray original="{\"version\":1,\"song_list_x\":99,\"mask_present_6_x\":0,\"gear_6_x\":0,\"magic_bar_height\":1.5,\"damage_multiplier\":4,\"custom\":true}";
         settings.write(original);settings.close();
         QFile base(user+"setup/layout-baseline.json");Check(base.open(QIODevice::WriteOnly),"baseline fixture");
-        base.write("{\"version\":1,\"defaults\":{\"song_list_x\":-3.9,\"damage_multiplier\":1}}");base.close();
+        base.write("{\"version\":"+QByteArray::number(layout_version)+",\"defaults\":{\"song_list_x\":-3.9,\"mask_present_6_x\":80.6,\"gear_6_x\":78.7,\"magic_bar_height\":1.68,\"damage_multiplier\":1}}");base.close();
         Check(ResetMenuLayouts(user+"presentation.json",user).isEmpty(),"explicit layout reset");
         Check(settings.open(QIODevice::ReadOnly),"read reset settings");
         auto obj=QJsonDocument::fromJson(settings.readAll()).object();settings.close();
         Check(obj["song_list_x"].toDouble()==-3.9&&obj["damage_multiplier"].toInt()==4&&obj["custom"].toBool(),"reset preserves unrelated preferences");
+        Check(obj["mask_present_6_x"].toDouble()==80.6&&obj["gear_6_x"].toDouble()==78.7,
+              "explicit reset includes mask description and Gear photo");
+        Check(obj["magic_bar_height"].toDouble()==1.5,"menu reset preserves custom HUD height");
         const auto backups=QDir(user+"setup/layout-reset-backups").entryList({"*.json"},QDir::Files);
         Check(backups.size()==1,"reset backed up once");
         QFile backup(user+"setup/layout-reset-backups/"+backups[0]);Check(backup.open(QIODevice::ReadOnly)&&backup.readAll()==original,"reset backup bytes preserved");

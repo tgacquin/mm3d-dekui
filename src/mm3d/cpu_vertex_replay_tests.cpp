@@ -357,7 +357,9 @@ void Run(bool jit) {
                  "shader/swizzle/entry/engine changes, scratch reuse and eased CPU popup vertices\n";
 }
 }
-int main() {
-    try { Run(false); Run(true); }
+#include "mm3d/gpu_interpolation_inputs_tests.h"
+#include "mm3d/gpu_interpolation_capture_check.h"
+int main(int argc,char** argv) {
+    try { CheckGpuInputs(); Run(false); Run(true); if(argc==2)CheckGpuCaptures(argv[1]); }
     catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

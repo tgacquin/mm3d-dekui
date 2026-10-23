@@ -7,7 +7,8 @@
 namespace MM3D::BurstParticleInterpolation {
 using Vertex = std::array<std::array<float, 4>, 5>; // position, color, up to three UVs
 using ForestParticleInterpolation::Near;
-enum class Kind { Dust, Blood, Flame, BombDebris };
+enum class Kind { Dust, Blood, Flame, BombDebris, BlueBlood };
+inline bool IsBlood(Kind kind) { return kind == Kind::Blood || kind == Kind::BlueBlood; }
 inline bool BombMaterial(const std::array<std::array<std::uint32_t,5>,6>& tev) {
     for(unsigned i=0;i<6;++i)
         if(tev[i]!=std::array<std::uint32_t,5>{i?268374015u:238030384u,0,i?0u:65537u,i?0xffffffffu:0u,0})return false;
@@ -58,6 +59,9 @@ inline std::optional<std::vector<Quad>> Decode(std::span<const Vertex> inputs,
         else if (color[0] >= 0 && color[0] <= .04f && Near(color[0], color[2]) &&
                  color[1] >= .12f && color[1] <= .8f)
             q.kind = Kind::Blood;
+        else if (bomb_material && color[0] >= 0 && color[0] <= .04f &&
+                 Near(color[0], color[1]) && color[2] >= .12f && color[2] <= .8f)
+            q.kind = Kind::BlueBlood;
         else return {};
         if (!out.empty() && out[0].kind != q.kind) return {};
         const float width = Edge(q, 2), height = Edge(q);
@@ -87,14 +91,16 @@ inline std::optional<std::vector<Quad>> Decode(std::span<const Vertex> inputs,
             for (unsigned a = 0; a < attributes; ++a)
                 for (float f : v[a]) if (!std::isfinite(f)) return {};
             const float u = float(k/2), t = float(1-k%2);
-            if (q.kind == Kind::Blood) {
-                // The blood sprite has a fixed green corner gradient tied to
-                // lifetime alpha. Do not admit unrelated green particles.
+            if (IsBlood(q.kind)) {
+                // Green and blue blood share the captured corner gradient and
+                // lifetime fade. Blue additionally requires the sprite material;
+                // a blue tint alone must not admit unrelated particles.
                 const float a = color[3];
-                const std::array<float, 4> expected{
+                std::array<float, 4> expected{
                     k == 0 ? a*10.f/255 : 0,
                     k == 0 ? (32+168*a)/255 : k == 2 ? (32+96*a)/255 : (64+64*a)/255,
                     k == 0 ? a*10.f/255 : 0, a};
+                if (q.kind == Kind::BlueBlood) std::swap(expected[1], expected[2]);
                 for (unsigned c = 0; c < 4; ++c) if (!Near(v[1][c], expected[c])) return {};
             } else {
                 for (unsigned c = 0; c < 4; ++c) if (!Near(v[1][c], color[c])) return {};
@@ -121,15 +127,17 @@ inline std::optional<std::vector<Quad>> Decode(std::span<const Vertex> inputs,
 // a is newer than b. Spawn/reset discontinuities never inherit old motion.
 inline bool Compatible(const Quad& a, const Quad& b) {
     if (a.kind != b.kind) return false;
+    if (a.kind == Kind::BlueBlood && a.vertices[0][1][3] > b.vertices[0][1][3] + .001f)
+        return false;
     if(a.kind==Kind::BombDebris && (std::abs(Edge(a)-Edge(b))>.005f ||
        std::abs(Edge(a,2)-Edge(b,2))>.005f))return false;
     const auto ac = Center(a), bc = Center(b);
     float distance = 0;
     for (unsigned c = 0; c < 3; ++c) distance += (ac[c]-bc[c])*(ac[c]-bc[c]);
-    if (distance > (a.kind == Kind::Blood || a.kind == Kind::BombDebris ? 256.f : a.kind == Kind::Flame ? 144.f : 100.f)) return false;
+    if (distance > (IsBlood(a.kind) || a.kind == Kind::BombDebris ? 256.f : a.kind == Kind::Flame ? 144.f : 100.f)) return false;
     for (unsigned c = 0; c < 4; ++c)
         if (std::abs(a.vertices[0][1][c]-b.vertices[0][1][c]) >
-            (a.kind == Kind::Dust ? .26f : a.kind == Kind::Blood ? .05f : .15f)) return false;
+            (a.kind == Kind::Dust ? .26f : IsBlood(a.kind) ? .05f : .15f)) return false;
     if (a.kind == Kind::Dust) {
         const int step = Tile(a)-Tile(b);
         if (step != 0 && step != 1) return false;
@@ -164,7 +172,7 @@ inline std::optional<std::vector<unsigned>> BloodMatches(const std::vector<Quad>
     // its center. Recover that shared motion before matching close neighbors.
     // Validate every drop independently; never assume submission order is ID.
     if (current.size() != 27 || previous.size() != 27 ||
-        current[0].kind != Kind::Blood || previous[0].kind != Kind::Blood) return {};
+        !IsBlood(current[0].kind) || previous[0].kind != current[0].kind) return {};
     std::array<double, 3> ac{}, bc{};
     for (unsigned i = 0; i < 27; ++i) {
         const auto a = Center(current[i]), b = Center(previous[i]);

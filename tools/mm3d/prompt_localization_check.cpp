@@ -17,7 +17,7 @@ int main() {
         const auto font=m.Alloc(0x14),header=m.Alloc(0x2c),pages=m.Alloc(8);
         std::u32string chars;
         for(auto e:T::Entries){chars+=T::Codes(T::Translate(language,e.english));chars+=T::Codes(e.english);}
-        chars+=U"ZR +/";
+        chars+=U"ZRL -+/";
         std::sort(chars.begin(),chars.end());chars.erase(std::unique(chars.begin(),chars.end()),chars.end());
         auto records=m.Alloc(chars.size()*12);
         m.words[font+4]=header;m.words[font+0xc]=pages;m.words[font+0x10]=records;
@@ -95,12 +95,13 @@ int main() {
             H::Options options;options.horizontal=true;options.pose={150,220,.25f};options.spacing=20;
             H::Apply(options);
             auto stack=(m.Alloc(0x12000)+0x12000)&~7u;
-            for(float gap:{20.f,80.f}) {
+            for(bool clicks:{false,true,false})for(float gap:{20.f,80.f}) {
+                MM3D::StickControls::Configure(clicks);
                 H::spacing=gap;H::Hook help;const auto before=m.words;
                 auto root=help.Root(m,inventory,panel,stack,panel+8);
                 assert(root!=panel+8);
                 auto children=m.words[root+0x14];U32 text_scale=0;float last_right=150;
-                for(unsigned i=0;i<28;i+=2) {
+                for(unsigned i=0;i<(clicks?20u:28u);i+=2) {
                     auto n=m.words[children+4*i],g=m.words[n+0x28];
                     const float left=std::bit_cast<float>(m.words[n+0xec]);
                     assert(left>=last_right-.01f);
@@ -114,6 +115,18 @@ int main() {
                     last_right=left+width*std::bit_cast<float>(m.words[n+0xe0]);
                 }
                 if(language!=2)assert(last_right<=396.01f);
+                if(clicks)for(unsigned row=0;row<2;++row) {
+                    const auto n=m.words[children+(16+row*2)*4],g=m.words[n+0x28],records=m.words[g+0x2fc];
+                    const auto label=T::Codes(H::EquipLabel(language,row));
+                    assert(m.words[g+0x300]==label.size());
+                    assert(label.substr(0,5)==(row?U"ZR - ":U"ZL - "));
+                    float pen=0;
+                    for(unsigned i=0;i<label.size();++i) {
+                        const auto glyph=MM3D::NotebookFont::Lookup(m,font,label[i],pen);assert(glyph);
+                        for(unsigned j=0;j<15;++j)assert(m.words[records+i*60+j*4]==glyph->words[j]);
+                        pen+=glyph->advance;
+                    }
+                }
                 assert(help.scratch.End(m)==stack&&m.words==before);
             }
             H::Apply({});

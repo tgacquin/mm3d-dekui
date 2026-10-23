@@ -26,6 +26,7 @@
 #include "core/movie.h"
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/input_latency.h"
+#include "mm3d/stick_controls.h"
 #include "mm3d/classic_saving.h"
 #include "mm3d/ocarina_input.h"
 #include "mm3d/file_select_input.h"
@@ -127,6 +128,12 @@ void Module::LoadInputDevices() {
                    Settings::values.current_input_profile.buttons.begin() +
                        Settings::NativeButton::BUTTON_HID_END,
                    buttons.begin(), Input::CreateDevice<Input::ButtonDevice>);
+#ifdef ENABLE_MM3D_PRESENTATION
+    for(unsigned i=0;i<stick_clicks.size();++i)
+        stick_clicks[i]=Input::CreateDevice<Input::ButtonDevice>(
+            Settings::values.current_input_profile.buttons[Settings::NativeButton::LeftStickClick+i]);
+    MM3D::StickControls::host_buttons=0;MM3D::StickControls::host_pressed=0;
+#endif
     circle_pad = Input::CreateDevice<Input::AnalogDevice>(
         Settings::values.current_input_profile.analogs[Settings::NativeAnalog::CirclePad]);
     motion_device = Input::CreateDevice<Input::MotionDevice>(
@@ -154,6 +161,10 @@ void Module::UpdatePadCallback(std::uintptr_t user_data, s64 cycles_late) {
         LoadInputDevices();
 
     using namespace Settings::NativeButton;
+#ifdef ENABLE_MM3D_PRESENTATION
+    MM3D::StickControls::Publish((stick_clicks[0]->GetStatus()?MM3D::StickControls::Left:0u)|
+                                (stick_clicks[1]->GetStatus()?MM3D::StickControls::Right:0u));
+#endif
 
     if (artic_controller.get() && artic_controller->IsReady()) {
         constexpr u32 HID_VALID_KEYS = 0xF0003FFF;

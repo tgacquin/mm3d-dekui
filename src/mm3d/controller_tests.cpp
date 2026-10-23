@@ -104,6 +104,16 @@ int main() {
             const auto button=[&](int i){return Common::ParamPackage(mapped.buttons[i]);};
             Check(button(Settings::NativeButton::A).Get("button",-1)==SDL_CONTROLLER_BUTTON_B,"A maps to right face");
             Check(button(Settings::NativeButton::B).Get("button",-1)==SDL_CONTROLLER_BUTTON_A,"B maps to bottom face");
+            Check(button(Settings::NativeButton::LeftStickClick).Get("button",-1)==SDL_CONTROLLER_BUTTON_LEFTSTICK,"left stick click binding");
+            Check(button(Settings::NativeButton::RightStickClick).Get("button",-1)==SDL_CONTROLLER_BUTTON_RIGHTSTICK,"right stick click binding");
+            for(auto click:{SDL_CONTROLLER_BUTTON_LEFTSTICK,SDL_CONTROLLER_BUTTON_RIGHTSTICK}) {
+                poller.Start();
+                SDL_Event event{};event.type=SDL_CONTROLLERBUTTONDOWN;event.cbutton.which=id;event.cbutton.button=click;
+                state.event_queue.Push(event);Check(poller.GetNextInput().Has("down"),"stick click press captured");
+                event.type=SDL_CONTROLLERBUTTONUP;state.event_queue.Push(event);
+                auto up=poller.GetNextInput();Check(up.Get("button",-1)==click&&!up.Has("down"),"stick click release captured");
+                poller.Stop();
+            }
             Check(button(Settings::NativeButton::Start).Get("button",-1)==SDL_CONTROLLER_BUTTON_START,"Start mapping");
             Check(button(Settings::NativeButton::Select).Get("button",-1)==SDL_CONTROLLER_BUTTON_BACK,"Select mapping");
             Check(button(Settings::NativeButton::ZR).Get("axis",-1)==SDL_CONTROLLER_AXIS_TRIGGERRIGHT,"ZR trigger");

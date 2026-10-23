@@ -148,6 +148,14 @@ int main(int argc, char** argv) {
             window.UpdateCurrentFramebufferLayout(unsigned(960 * window.devicePixelRatio()), unsigned(540 * window.devicePixelRatio()));
             {
                 Vulkan::PresentWindow presentation(window, instance, scheduler, false, true);
+                // Reproduce two-image drivers even if this host's swapchain has
+                // more images. Keep excess render frames checked out until
+                // teardown, leaving one retained frame and one working frame.
+                // GetRenderFrame resets their fences, so never wait on these
+                // unused frames: no GPU work was submitted for them.
+                for (u32 spare = 2; spare < presentation.ImageCount(); ++spare)
+                    (void)presentation.GetRenderFrame();
+                std::cout << "Testing two usable presentation frames" << std::endl;
                 Vulkan::Frame* last_frame{};
                 for (unsigned i = 0; i < 180; ++i) {
                     window.PollEvents();

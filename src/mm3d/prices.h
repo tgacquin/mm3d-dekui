@@ -62,6 +62,10 @@ template<class M,class R> void Execute(M& m,R& r,unsigned index,unsigned factor)
 }
 template<class M> void Message(M& m,U32 self,U32 id,unsigned factor) {
     factor=std::clamp(factor,1u,3u);
+    if (Translation::Owns(m, self)) {
+        Translation::Apply(m, self, id, Translation::Kind::Price, factor - 1);
+        return;
+    }
     const bool active=factor!=1;
     if(!SingleScreenText::Pointer(self,20))return;
     auto base=m.Read(self+4),entries=m.Read(self+8),size=m.Read(self+12),stride=m.Read(self+16);

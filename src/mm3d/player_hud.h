@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 #include "mm3d/hud_adjustments.h"
+#include "mm3d/stick_controls.h"
 #include "mm3d/native_inventory.h"
 namespace MM3D::PlayerHud {
 using namespace NativeInventory;
@@ -82,7 +83,8 @@ struct Hook {
         std::vector<Write> writes;std::vector<U32> seen;
         for(unsigned i=0;i<6;++i) {
             if(actions!=(i>=4))continue;
-            const int dx=button_x[i].load(),dy=button_y[i].load();if(!dx&&!dy)continue;
+            const auto slot=StickControls::ItemLayoutIndex(i,2);
+            const int dx=button_x[slot].load(),dy=button_y[slot].load();if(!dx&&!dy)continue;
             for(auto n:nodes)if(Named(m,n,icons[i])||(i<4&&Named(m,n,bases[i])))
                 if(!helper.Transform(m,n,writes,seen,{1,0,0,1,float(dx),float(dy)}))return;
         }

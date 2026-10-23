@@ -133,10 +133,16 @@ void HudButtonChecks(){
     assert(H::LoadSlot(o,0)&&o.buttons[1].x==12&&o.scale==2);
     H::Apply(o);
     auto layout=m.Layout("HudItemIconSet"),all=m.Widget("all");m.Children(layout+8,{all});
-    std::vector<U32> groups;std::array<U32,4> icons{};
+    std::vector<U32> groups;std::array<U32,4> icons{};std::array<std::array<U32,3>,4> contents{};
     const char* names[]{"icon_item_1_g","icon_item_x_g","icon_item_y_g","icon_item_2_g"};
     const char* bases[]{"btn_corner01_g","btn_x_g","btn_y_g","btn_corner03_g"};
     for(unsigned i=0;i<4;++i){icons[i]=m.Widget(names[i],300+i*10,20);groups.push_back(icons[i]);groups.push_back(m.Widget(bases[i]));}
+    for(unsigned i=0;i<4;++i) {
+        unsigned c=0;for(const char* name:{"letter","item","count"}) {
+            contents[i][c]=m.Widget(name,301+i*10+c,21+c);++c;
+        }
+        m.Children(icons[i],{contents[i][0],contents[i][1],contents[i][2]});
+    }
     m.Children(all,groups);auto original=m.words;
     hook.Begin(m,layout);assert(std::bit_cast<float>(*m.Read(icons[1]+0xec))==322);
     assert(std::bit_cast<float>(*m.Read(icons[1]+0xfc))==15);
@@ -169,7 +175,30 @@ void HudButtonChecks(){
         assert(std::abs(std::hypot(xy[0][0]-xy[2][0],xy[0][1]-xy[2][1])-2*gap)<.001f);
         hook.End(m);assert(m.words==original);
     }
-    H::Apply(H::Options{});
+    // Both individual layouts and saved diamond layouts exchange complete
+    // groups without changing stored coordinates, native data, or X/Y/A/B.
+    o.buttons[4]={13,17,1};o.buttons[5]={-23,37,1};
+    for(bool diamond:{false,true})for(bool clicks:{false,true,false}) {
+        o.diamond.enabled=diamond;o.diamond.spacing=31;o.diamond.rotation=25;
+        H::SaveSlot(o,1);const auto saved=o.presets[1];H::Apply(o);
+        MM3D::StickControls::Configure(clicks);original=m.words;
+        hook.Begin(m,layout);
+        for(unsigned n:{0u,3u}) {
+            const unsigned index=n==0?4:5,slot=MM3D::StickControls::ItemLayoutIndex(index,4);
+            const unsigned source=slot==4?0:3;
+            const auto target=diamond?H::DiamondPoint(slot,o.diamond):
+                std::array<float,2>{300.f+source*10+o.buttons[slot].x,20+o.buttons[slot].y};
+            assert(std::abs(std::bit_cast<float>(*m.Read(icons[n]+0xec))-target[0])<.001f);
+            assert(std::abs(std::bit_cast<float>(*m.Read(icons[n]+0xfc))-target[1])<.001f);
+            for(unsigned c=0;c<3;++c) {
+                assert(std::abs(std::bit_cast<float>(*m.Read(contents[n][c]+0xec))-(target[0]+(1+c)*o.scale))<.001f);
+                assert(std::abs(std::bit_cast<float>(*m.Read(contents[n][c]+0xfc))-(target[1]+(1+c)*o.scale))<.001f);
+            }
+        }
+        hook.End(m);assert(m.words==original);
+        assert(H::LoadSlot(o,1)&&o.buttons[4].x==saved[4].x&&o.buttons[5].y==saved[5].y);
+    }
+    MM3D::StickControls::Configure(false);H::Apply(H::Options{});
 }
 void FullscreenEffectsChecks(){
     namespace W=MM3D::WidescreenProbe;
@@ -2803,29 +2832,6 @@ void CutsceneFovChecks() {
     m.words[game+0xa78]=4<<16;assert(C::ConfiguredFov(m,projection)==65);
     C::desired_fov=45;
 }
-void GearPhotoPoseChecks() {
-    Memory m;Hook h;const auto page=m.Alloc(0x200),photo=m.Layout("GearPhoto");
-    const auto left=m.Widget("picture_left_pane",120,80),right=m.Widget("picture_right_pane",120,80);
-    const auto border=m.Widget("frame",116,76),corner=m.Widget("frame_corner",284,164);
-    m.Children(photo+8,{left,right,border});m.Children(border,{corner});
-    m.words[0x656b0c]=page;m.words[0x72f5bc+8]=page;
-    m.words[page]=0x63a270;m.words[page+0x10]=photo;
-    MM3D::GearMenu::Options options;options.poses[MM3D::GearMenu::Photo]={100,15,.5f};
-    MM3D::GearMenu::Apply(options);const auto before=m.words;
-    h.Begin(m,photo);
-    for(auto node:{left,right,border,corner}) {
-        const float x=std::bit_cast<float>(before.at(node+0xec));
-        const float y=std::bit_cast<float>(before.at(node+0xfc));
-        assert(std::abs(std::bit_cast<float>(*m.Read(node+0xec))-(100+200+.5f*(x-200)))<.001f);
-        assert(std::abs(std::bit_cast<float>(*m.Read(node+0xfc))-(15+120+.5f*(y-120)))<.001f);
-    }
-    h.End(m);assert(m.words==before);
-    // The shared photo layout must retain native placement outside Gear.
-    m.words[0x72f5bc+8]=0;const auto outside=m.words;
-    h.Begin(m,photo);h.End(m);assert(m.words==outside);
-    MM3D::GearMenu::Apply(MM3D::GearMenu::Options{});
-}
-
 void SharedMessageChecks() {
     namespace L=MM3D::MessageLayout;namespace I=MM3D::MessageInterpolation;
     Memory m;auto layout=m.Layout("MessageWindow",0,0,0x500),all=m.Widget("all"),plate=m.Widget("plate"),pane=m.Widget("window_plate");
@@ -2909,6 +2915,65 @@ void SharedMessageChecks() {
     assert(!I::Active(202,888)&&!I::Active(200,889));
 
 
+}
+
+void GearPhotoPoseChecks() {
+    Memory m;Hook h;const auto page=m.Alloc(0x200),photo=m.Layout("GearPhoto");
+    const auto left=m.Widget("picture_left_pane",120,80),right=m.Widget("picture_right_pane",120,80);
+    const auto border=m.Widget("frame_base_pane",116,76),corner=m.Widget("frame_corner",284,164);
+    m.Children(photo+8,{left,right,border});m.Children(border,{corner});
+    const auto geo=m.Alloc(0x7c);m.words[border+0x28]=geo;m.words[geo+4]=5;
+    m.words[geo+0x14]=std::bit_cast<U32>(-104.f);m.words[geo+0x18]=std::bit_cast<U32>(-64.f);
+    m.words[geo+0x20]=std::bit_cast<U32>(208.f);m.words[geo+0x24]=std::bit_cast<U32>(128.f);
+    m.words[0x656b0c]=page;m.words[0x72f5bc+8]=page;
+    m.words[page]=0x63a270;m.words[page+0x10]=photo;
+    MM3D::GearMenu::Options options;options.poses[MM3D::GearMenu::Photo]={100,15,.5f};
+    MM3D::GearMenu::Apply(options);const auto before=m.words;
+    h.Begin(m,photo);
+    for(auto node:{left,right,border,corner}) {
+        const float x=std::bit_cast<float>(before.at(node+0xec));
+        const float y=std::bit_cast<float>(before.at(node+0xfc));
+        assert(std::abs(std::bit_cast<float>(*m.Read(node+0xec))-(100+200+.5f*(x-200)))<.001f);
+        assert(std::abs(std::bit_cast<float>(*m.Read(node+0xfc))-(15+120+.5f*(y-120)))<.001f);
+    }
+    h.End(m);assert(m.words==before);
+    MM3D::PhotoCapture::layout=photo;
+    h.Begin(m,photo,true);
+    assert(std::bit_cast<float>(*m.Read(geo+0x20))==207.5f);
+    assert(std::bit_cast<float>(*m.Read(geo+0x14))==-103.75f);
+    for(auto node:{left,right,border,corner}) {
+        const float x=std::bit_cast<float>(before.at(node+0xec));
+        assert(std::abs(std::bit_cast<float>(*m.Read(node+0xec))-(300+(8.f/15.f)*(x-200)))<.001f);
+    }
+    h.End(m);assert(m.words==before);
+    // Shutter preview widens the full photo/frame without applying Gear controls.
+    MM3D::PhotoCapture::enabled=false;
+    h.Begin(m,photo,true);
+    assert(std::bit_cast<float>(*m.Read(geo+0x20))==208.f);
+    for(auto node:{left,right,border,corner}) {
+        const float x=std::bit_cast<float>(before.at(node+0xec));
+        assert(std::abs(std::bit_cast<float>(*m.Read(node+0xec))-(300+.5f*(x-200)))<.001f);
+    }
+    h.End(m);assert(m.words==before);
+    MM3D::PhotoCapture::enabled=true;
+    m.words[0x72f5bc+8]=0;const auto preview=m.words;
+    h.Begin(m,photo,true);
+    assert(std::bit_cast<float>(*m.Read(geo+0x20))==207.5f);
+    assert(std::bit_cast<float>(*m.Read(geo+0x14))==-103.75f);
+    for(auto node:{left,right,border,corner}) {
+        const float x=std::bit_cast<float>(preview.at(node+0xec));
+        assert(std::abs(std::bit_cast<float>(*m.Read(node+0xec))-(200+(16.f/15.f)*(x-200)))<.001f);
+    }
+    h.End(m);assert(m.words==preview);
+    h.Begin(m,photo,false);h.End(m);assert(m.words==preview);
+    MM3D::PhotoCapture::enabled=false;
+    h.Begin(m,photo,true);assert(m.words==preview);h.End(m);
+    MM3D::PhotoCapture::enabled=true;
+    MM3D::PhotoCapture::layout=0;
+    // The shared photo layout must retain native placement outside Gear.
+    m.words[0x72f5bc+8]=0;const auto outside=m.words;
+    h.Begin(m,photo);h.End(m);assert(m.words==outside);
+    MM3D::GearMenu::Apply(MM3D::GearMenu::Options{});
 }
 
 int main(int argc,char** argv) {

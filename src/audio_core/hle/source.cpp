@@ -457,9 +457,21 @@ bool Source::DequeueBuffer() {
     if (state.input_queue.empty())
         return false;
 
-    accurate_buffer = accurate_audio.load();
     Buffer buf = state.input_queue.top();
     state.input_queue.pop();
+
+    const auto mode = accuracy_mode.load();
+    accurate_buffer = mode == AccuracyMode::All;
+    if (mode == AccuracyMode::Rupees && buf.format == Format::ADPCM &&
+        buf.mono_or_stereo == MonoOrStereo::Mono) {
+        if (const auto* signature = RupeeAudio::Find(state.adpcm_coeffs, buf.length)) {
+            const auto data = memory_system->GetPhysicalRef(buf.physical_address & 0xFFFFFFFC);
+            const auto count = RupeeAudio::PrefixBytes(buf.length);
+            if (data && data.GetSize() >= count)
+                accurate_buffer = RupeeAudio::Matches(*signature, buf.length,
+                                                      data.GetReadBytes<u8>(count));
+        }
+    }
 
     if (buf.adpcm_dirty) {
         state.adpcm_state.yn1 = buf.adpcm_yn[0];

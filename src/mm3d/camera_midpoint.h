@@ -190,13 +190,17 @@ inline bool AlternateWorldLens(const Matrix& a,const Matrix& b) {
 // only small changes of the rotated perspective terms with unchanged clipping.
 inline std::optional<std::array<double,2>> GradualWorldWobble(const Matrix& a,const Matrix& b) {
     if(!WorldProjection(a)||!WorldProjection(b)||a[2]!=b[2])return {};
-    // Both underwater captures use this near/far range. Swimming produces
-    // much stronger distortion than the nearly stationary first capture.
-    // Keep the larger envelope specific to that verified projection.
-    const bool underwater=std::abs(a[2][0])<1e-6 && std::abs(a[2][1])<1e-6 &&
-        std::abs(a[2][2]-1.0004167556762695)<1e-6 &&
-        std::abs(a[2][3]-5.002084255218506)<1e-5;
-    const double limit=underwater?.05:.005;
+    // Water entry animates the two lens axes independently by up to 4.8% per
+    // frame. The far plane is scene-dependent (the Hall capture differs from
+    // the coast), so an exact depth coefficient cannot identify this motion.
+    // Recognize the native five-unit near-plane perspective family instead:
+    // for this depth convention near = P[2][3] / P[2][2]. Keep clipping fixed
+    // within the pair, and retain all axis, sign and camera-cut guards.
+    const bool world_lens=a[0][1]>0 && a[1][0]<0 &&
+        std::abs(a[2][0])<1e-6 && std::abs(a[2][1])<1e-6 &&
+        a[2][2]>1. && a[2][2]<1.01 &&
+        std::abs(a[2][3]/a[2][2]-5.)<.00001;
+    const double limit=world_lens?.05:.005;
     std::array<double,2> scale{};
     for(unsigned r=0;r<2;++r)for(unsigned c=0;c<4;++c) {
         if(c==1-r) {
@@ -312,16 +316,19 @@ struct SceneCopies {
             std::uint64_t(base)+PaddingBytes==padded_destination;
     }
 };
-inline bool NormalizedShrinkMesh(const Matrix& projection,const Matrix& model,
-                                 const std::array<float,4>& uv) {
+inline bool NormalizedShrinkMatrices(const Matrix& projection,const Matrix& model) {
     Matrix p{};p[0]={0,-1./120,0,1};p[1]={-1./200,0,0,1};
     p[2]={0,0,1./1800,1./3};p[3]={0,0,0,1};
     auto m=Identity();m[2][3]=-1200;
+    return Near(projection,p,.00001) && Near(model,m,.00001);
+}
+inline bool NormalizedShrinkMesh(const Matrix& projection,const Matrix& model,
+                                 const std::array<float,4>& uv) {
     // Verified native shrink mesh UVs stop one texel short of the scene edge.
     // Stereo mode uses 239/512 horizontally, mono uses twice that value.
     for(float value:uv)if(!std::isfinite(value))return false;
     constexpr float epsilon=.00001f;
-    return Near(projection,p,.00001) && Near(model,m,.00001) &&
+    return NormalizedShrinkMatrices(projection,model) &&
         std::abs(uv[0])<epsilon && std::abs(uv[1])<epsilon &&
         (std::abs(uv[2]-478.f/512)<epsilon || std::abs(uv[2]-239.f/512)<epsilon) &&
         std::abs(uv[3]-399.f/512)<epsilon;

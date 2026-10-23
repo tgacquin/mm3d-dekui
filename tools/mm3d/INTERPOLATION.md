@@ -360,6 +360,16 @@ as particle identity. Ambiguous matches, frame gaps and scene changes stay nativ
 The actor matcher separately recognizes Business Scrub shared bones and the
 verified parent bones for the Milk Road pickaxe and Real Bombchu tail bomb.
 
+The October 23 lizard-enemy hit capture adds blue blood to the same burst decoder
+in both CPU and GPU modes. It requires the captured sprite combiner, square
+geometry, full UVs and the exact lifetime-dependent blue corner gradient. Green
+and blue bursts have separate kinds; a new blue burst cannot inherit a fading
+burst's motion. All 36 captured batches decode (972 droplets), producing 24
+midpoint batches and 578 moving droplet midpoints. Tests cover the blue gradient,
+material rejection, motion and fading, color isolation, lifetime resets and
+27-droplet correspondence after draw-order changes. Live visual confirmation
+is still required.
+
 `spark_interpolation.h` handles Real Bombchu fuse stars in CPU mode. Overlapping
 submissions share an immutable previous-frame pool and deduplicate native stars
 for the next frame. Geometry, doubled UVs, tint and lifetime fade constrain
@@ -525,6 +535,28 @@ Select Item retains its original six-frame linear entry/exit timing. The custom
 duration and easing controls and saved settings have been removed. Its stamped
 motion history and CPU/GPU midpoint replay remain enabled, including both slide
 directions. The earlier full-size/full-opacity prompt treatment is retained.
+
+The moon's `MenuMaskPresen` has independent Select Mask controls for its panel,
+title, description and Choose/Cancel prompts, with the stamped six-frame slide
+in both directions. Its 24
+icons use owner+0x50, and its animation player is at owner+0x30 (different from
+Give Item). The six-column grid and both selection cursors move together; the
+item-only right strip is not applied. Only the mask panel, title and controls
+are routed to the top screen; the bottom backdrop is omitted. Legacy settings
+seed the mask panel/title/prompts from Give Item and preserve the description's
+previous dialogue pose. New `mask_present_*` keys save subsequent edits separately.
+An exterior shadow surrounds the union of the three mask-panel texture pieces
+without darkening internal seams. Select Mask samples its quadratic opacity
+falloff in 24 thin exterior rings instead of three broad bands and coarse corner
+cells. The rings contain 96 disjoint rectangles within the existing scratch
+allocation; each corner belongs to only one rectangle. Tests check opacity,
+edge joins, scaling, routing and restoration of guest memory. Live visual
+verification of the smoother falloff is still needed.
+Select Mask uses a broader, darker halo weighted toward the bottom for visual
+separation from the world at smaller editor scales. The title's delayed visibility and scale/fade tracks
+are overridden during calculation/drawing and restored afterward. Guest-memory
+tests cover routing, all 24 icons, cursors, prompts, both transitions and malformed
+layouts; in-game placement still needs visual verification.
 
 ### Majora's strands and detachment fragments
 
@@ -851,6 +883,40 @@ Offline replay recognizes 1,800/1,800 map draws, with 1,200 midpoint draws and
 380 changing poses; none of the 38 sampled consecutive moving frames is missed.
 This verifies capture matching, pending live CPU/GPU presentation confirmation.
 
+### Notebook portrait flash alignment
+
+Capture `song-effect-1792193513311` contains 18 solid portrait-highlight draws
+whose clip scale was 1 while their textured portraits used 15/16. A saved
+fullscreen draw-state rule also matched these small layout quads. The renderer
+now keeps localized, axis-aligned solid layout panes in the ordinary widescreen
+coordinate space, preserving the fullscreen rules for full-screen covers and
+full-width banners. Both the Schedule row flash and detail flash are covered;
+native timing, opacity, and portrait positions are unchanged.
+
+The shared Events/Schedule scrollbar also now ends its thumb five units inside
+the lower track cap, matching its upper inset. Previously it stopped at the
+lower cap's origin, leaving an extra three-unit gap even at full coverage.
+Tests cover full and partial coverage, scrolling endpoints, native animation
+sizes, scale, and restoration of guest memory after drawing.
+
+Follow-up capture `song-effect-1792194355932` includes both pages. Their track
+bounds agree (Y=40.2..232.2), but Events stretches its shorter 296-unit track
+to Schedule's 320 units: its thumb ends at 228.9567 rather than 229.2, and its
+caps are 1.2973 units tall rather than 1.2. Events now uses the same native
+356-unit track bottom as Schedule before normalization. A complete Events
+Begin/End regression verifies matching final bounds and cap sizes under three
+list scales, and exact guest-memory restoration; the previous code fails it.
+
+Capture `song-effect-1792197084902` exposes a separate thumb seam: the layout
+shader floors each piece's position. The strip can end at 227.99998 while the
+lower cap starts at 228, leaving a whole native pixel uncovered. Of 191 complete
+scrollbar samples, 58 have a gap after flooring. Extending the strip half a local
+unit into each cap removes those gaps in the captured geometry without changing
+the outside bounds. Both notebook pages share the correction. Tests include
+fractional positions near the bottom of a 61-entry list and floored join coverage;
+final appearance still requires an in-game check.
+
+
 ### Map zoom independent of explored-map clip range
 
 The common landscape model recovers to a 0.04-scale identity at world origin
@@ -964,3 +1030,548 @@ A follow-up capture exposed reconstructed-bind error above the generic matcher i
 ### Romani Ranch alien glow
 
 The captured moving glow is the alien beam model's 324-vertex outer layer and 180-vertex core, verified against local asset mesh counts and the complete captured materials. Per-instance history now interpolates their transforms, outer-layer UV scroll (including period-1/2 wraps), and animated combiner colors/opacity. Color changes are allowed only in these two materials' animated constant fields; all other material fields remain exact. The midpoint upload preserves native fragment state and clears its color override before subsequent draws. Both layers yield 580 moving midpoints in the capture; births, gaps, distant jumps and ambiguous neighboring instances stay native. Existing flame/wake matching and reflection behavior remain scoped to their original patterns.
+
+### Mounted Link and captured actor gaps (October 22)
+
+The mounted bowstring uses a deliberately singular human bone 24. Complete its
+missing Y basis for rotation interpolation, then restore the zero column; this
+exception requires the human topology and 12-vertex bow mesh. Bunny Hood's
+three-bone model follows the human head midpoint through its verified fixed
+attachment, with animated ear children retained. Extend the direct-root sliding
+shutter family to Spider House, Ikana and the audited Fortress meshes (84/264
+vertices). Allow consensus resolution of equivalent bones for the reflected
+mirror light, marine lab fish, Bombchus and burrowed Deku head (414/186 vertices).
+Current and intermediate candidates must agree; coincident instances, hidden
+zero-scale geometry and capture gaps remain native.
+
+Offline actor-history replay yields 28 moving bowstring midpoints, 28 Bunny Hood
+midpoints, 178 moving Spider House shutter midpoints, 126 mirror-light midpoints,
+108 fish midpoints, 330 Bombchu midpoints and 108 burrowed-head midpoints. Counts
+refer to palette zero; capture acquisition/gaps are not interpolated. The rod
+capture already yields 850 moving rod/reel midpoints through the existing path,
+so no fishing-rod skeleton exception was added. The latest Tingle capture has
+Tingle's body but neither balloon model signature; it cannot validate the
+existing sphere/knot interpolation or establish a new balloon defect.
+
+### Bow release and Zora room water follow-up (October 22)
+
+The follow-up bow capture `link-pose-1792711900684.json` shows human bone 24
+stretching from zero Y scale, rapidly contracting, and crossing into negative
+Y scale during release. The previous flat-only exception missed those changes.
+Reconstruct orientation from the two intact axes and interpolate signed string
+scale separately, scoped to the human skeleton and verified 12-vertex string
+mesh. Preserve generic singular-transform rejection, scale bounds, shear checks,
+duplicate ownership and history-gap guards. An offline replay with a fixed view
+improves from 239 to 384 moving midpoints among 386 changing poses; the remaining
+two samples cross the existing 100-unit discontinuity threshold at view changes.
+The capture is truncated, so this result describes its recorded poses only.
+
+Water captures `song-effect-1792711997102.json` and
+`song-effect-1792712165332.json` identify additional Zora room sheet, foam and
+surface layers. Add their measured UV bases, material/blend signatures and scroll
+rates, including the alternate speed of an existing 168-vertex additive sheet.
+Resolve equal-size, equal-basis meshes using the complete material instead of
+rejecting everything after the first structural match. The keyboard room's
+600-frame cycle wraps by known whole texture periods; interpolate its short
+scroll step rather than the phase reset. Only these measured periods may wrap.
+Offline replay produces 952 intermediate draw samples in the first capture
+(119 consecutive pairs across eight submissions) and 840 in the keyboard room
+(120 pairs across seven layers), including the recorded loop boundary. Capture
+sampling gaps reacquire natively. Regression checks cover material collisions,
+alternate speeds, exact loop periods and rejection of unrelated phase jumps.
+These are capture replays and automated checks, not post-build visual validation.
+
+### Ice breath, bubble-pop fragments and freezing particles
+
+Add material- and geometry-scoped CPU particle interpolation for the captured
+ice-enemy breath, probable fairy bubble-pop fragments, ice-arrow square shards
+and freezing mist. Match stable size, bounded movement, lifetime alpha and atlas
+progression; preserve native atlas tiles and signed mist color offsets. The
+shared previous pool handles multiple ice enemies drawing the same material;
+ambiguous matches, births and discontinuities remain native. White square ice
+shards are distinguished from rectangular bomb debris despite shared material.
+
+Replay decodes all 891 breath batches and 12 pop batches, generating 12,756 and
+160 moving particle samples respectively. The freezing capture decodes all 105
+shard batches and 36 mist batches, generating 1,324 and 130 intermediate particle
+samples. These totals include acquisition frames, births and unmatched particles
+in the native sample counts; they are not a claim of complete matching at spawn.
+
+### Reflected light and Zora Hall water animation
+
+The mirror beam, halo and end glow retain their skeletal midpoints while their
+UV layers and animated combiner colors interpolate. Rotation uses the captured
+0.75-degree step, scale-two basis and actual pivot translation; wrapping follows
+the short angular path. Each material produces 62 intermediate UV samples in the
+capture. Zora Hall's nine waterfall, foam and pool materials use their measured
+scroll rates and full material/blend checks, including the source-color blend
+on the 63-vertex layer. Each yields 105 intermediate scroll samples. Inactive
+texture rows remain native, and phase resets do not interpolate.
+
+The reflected shield face on walls uses a different path: it is composited into
+opaque receiver materials through texture unit 1, with its world-space projector
+in all three rows c14..c16. `mirror_projection_interpolation.h` matches the full
+combiner and the projector's 0.03/0.03/1 basis, recovers its pose, interpolates its
+origin and rotation, and restores the projection scale. Interpolating UV offsets
+alone would miss rotation and the third row. The projector history is shared by
+receivers using the same projection texture and scene generation, independent of
+their base textures and mesh sizes. Intensity also interpolates; frame gaps,
+ambiguous projectors, teleports and direction cuts retain native values.
+
+Both CPU vertex replay and GPU uniform upload apply all twelve coefficients only
+to the midpoint draw, leaving the native wall material intact. The October 23
+wall-face capture identifies 1,410 receiver draws across twelve mesh sizes and
+produces 936 moving midpoints; the other samples seed history after capture gaps.
+Tests cover projector rotation about its origin, the central projected ray,
+intensity, repeated wall draws, material isolation, discontinuities and resets.
+Live visual confirmation is still required.
+
+### Water-entry interpolation dropout
+
+The water-entry capture records two extended `no-midpoint` intervals exactly
+while both lens axes wobble. Its underwater far-plane coefficient is
+1.0007358789, outside the former exact coefficient 1.0004167557. Draw distance is
+scene-dependent and cannot identify underwater distortion. Permit the existing
+bounded five-percent two-axis motion for the native perspective family with a
+five-unit near plane, independent of far distance. Keep the same clipping range
+within each pair, require both axes to change without skew/sign flips, and
+retain camera-motion, timing and frame-gap guards. The capture's lens replay
+improves from 34/76 to 75/76 consecutive pairs; the clipping-range transition
+still reacquires natively for one frame. This is offline verification, not a
+live visual result from the still-running older executable.
+
+
+### Great Bay rotor, waterfall sheets and vortex
+
+The rotor screw and foreground deck share a one-bone root signature but use
+separate model instances. Permit the existing two-owner consensus resolver for
+signature `85335493df397bb2` and the verified 48/72/144/348/720-vertex meshes.
+Both histories must agree; third owners, divergent histories, unknown meshes
+and capture gaps remain native. The rotor capture produces 354 moving
+palette-zero midpoints for these meshes.
+
+Add eleven captured static water materials and the 240-vertex rotating vortex
+in the rotor room. The vortex's two layers have scales two/four, a shared
+negative 1.2-degree native angle step and linked scroll/pivot translations.
+Interpolate wrapped angles and reconstruct the pivot at the intermediate
+phase, preserving inactive UV rows. Repeated submissions reuse the complete
+active UV rows, including the rotated basis. Add 1500/1851/45-vertex meshes to
+the existing Great Bay water material families. Large accumulated coastal
+scroll phases allow bounded float rounding in both samples, capped at 0.00005;
+changed scroll speeds and phase resets remain rejected. Each new static layer
+and the vortex produce 93 intermediate samples in the rotor-room capture;
+the twice-submitted 432-vertex material produces 186.
+
+### Swimming Zora bubbles
+
+The follow-up Great Bay capture `song-effect-1792712414403.json` contains
+79–100 swimming bubbles per draw. The old 64-quad decode/history limit rejected
+every one of its 134 batches before matching could run. Raise these limits to
+128, matching the existing shared decoder's 513 inputs/768 strip indices and
+the existing 128-quad history pool. Material, geometry, stable-size, movement
+and ambiguity checks are unchanged. Replay now decodes all 134 batches and
+produces 8,317 moving intermediate samples among 13,069 captured bubbles;
+capture gaps, births and ambiguous matches remain native. Tests cover 64, 79,
+100 and 128 bubbles, repeated draws, gaps and rejection beyond capacity.
+This is capture verification; a new in-game visual check is still needed.
+
+The captured trail already reaches the additive bubble path. Its small, fixed
+random-size bubbles move roughly 11–12 world units per native frame, exceeding
+the original eight-unit particle matching bound. For the complete verified
+combiner and small-bubble batch (2.07–3.05-unit edges), permit up to 16 units of
+motion while requiring size agreement within 0.005. Retain mutual nearest
+matching, ambiguity rejection, RGB continuity, bounded history, and native
+atlas tiles. Changing between ordinary and swimming matching clears history.
+Ordinary growing bubbles retain the original movement and size bounds.
+
+All 139 captured batches decode. Offline history replay improves from 476 to
+3,650 moving intermediate particle samples out of 5,657 captured particles;
+roughly one third of frames acquire history after capture gaps. Newly spawned
+and ambiguous particles remain native. This capture has active presentation
+midpoints throughout, so the defect is independent of underwater lens dropout.
+No alpha-blend exception or new texture is needed.
+
+
+### Freezard death shrink and Snowhead rising pillar
+
+Freezard's four bones coincide, so the generic owner matcher rejects its
+630-vertex body even while the native scale changes. Permit the existing
+consensus resolver for signature `4fa89f19eb218899` and that mesh only. All
+candidate intermediate transforms must still agree. In the death capture,
+108 body samples previously produced no midpoints; they now produce 72. All
+four sampled consecutive shrinking pairs have the expected intermediate
+vertical scales (0.0054, 0.0050, 0.0014 and 0.0010). Births, frame gaps,
+coincident actors, divergent bone histories and fully collapsed geometry
+retain the existing safeguards.
+
+Snowhead's 384-vertex ice rings alias a direct transform with the neighboring
+ring's skin transform. Their bind offsets differ by one ring height. One ring
+also aliases the middle stone section's scaled skin. Recognize only these
+verified one-bone signatures/binds (`046391818a624e42` and
+`0952810a097e354ae`), require a direct/skin pairing from distinct instances,
+and require independent midpoint agreement. Duplicated coincident rings,
+third owners and rings moving apart do not inherit each other's history.
+
+Replay using the static room model to remove camera motion yields 185 moving
+midpoints across 280 ring submissions; all 185 consecutive sampled ring
+pairs interpolate. The separate 468/618-vertex stone sections already produce
+37 midpoints each. The remaining submissions acquire history after capture
+sampling gaps. Unit tests cover rise motion, middle-section skin, changed
+binds, wrong meshes, gaps, extra owners and divergent prior trajectories.
+
+
+Validation after the October 22 capture fixes: the full `azahar` target and
+`mm3d_camera_midpoint_tests` / `mm3d_cpu_vertex_replay_tests` build successfully.
+Camera/actor/particle regression tests and both interpreter/JIT vertex replay
+tests pass. The running emulator was left untouched; live visual verification
+requires loading the rebuilt executable on the user's next restart. No commit
+or push was made. The separate proposed stick-click control layout remains
+unimplemented; its English and localized-text audit is recorded in
+`tools/mm3d/CONTROLS_TEXT_AUDIT.txt`.
+
+
+### Ice breath atlas follow-up
+
+The follow-up capture `song-effect-1792709021269.json` contains 540 recognized
+breath batches, with active 60 Hz presentation throughout (596 pairs).
+Offline replay matches 7,777 of 9,351 particle samples having a captured previous
+frame; another 4,688 samples follow deliberate capture gaps. Of those matched
+particles, 7,708 advance one atlas tile. The former implementation interpolated
+position/alpha but retained the current tile, leaving the internal puff image
+stepping at the native animation rate.
+
+For the exact additive breath material only, render the current and previous
+tiles at the same intermediate position with half the interpolated alpha each.
+The verified combiner passes vertex alpha through; SourceAlpha/One blending
+therefore preserves the combined contribution without moving UVs between atlas
+cells. Reuse the existing CPU particle secondary-draw path. Unmatched/new
+particles receive no second contribution; unchanged tiles, history gaps,
+texture/generation changes and nonadditive ice mist retain their prior behavior.
+The native 30 Hz draws and guest particle simulation are unchanged. World-layer
+composition copies RGB opaquely, so framebuffer alpha is not treated as coverage.
+
+Focused tests cover brightness conservation, complete atlas cells, repeat draws,
+births, gaps, changed generations and isolation from freeze-mist materials.
+Live visual confirmation is still required; the capture is not a post-change
+recording.
+Wart bubble follow-up (2026-10-22)
+- `wort_ball`, topology/bind signature b847a2c91407dd5d, 216 vertices.
+- Root squash/shear rejected rigid interpolation. More importantly, native depth sorting reuses model slots for different bubbles; treating instance addresses as particle identities causes 100–478 unit jumps.
+- Match the complete world-space pool reciprocally (32-unit movement bound), require matching model/generation, bounded affine deformation, and reject ambiguous crossings. Never widen generic actor limits.
+- Captures 1792713188219 / 1792713468804 / 1792713489270: 2241/2260, 1020/1020, 894/894 consecutive changing samples produce intermediate poses. Initial capture keeps 19 ambiguous matches native. Replay derives camera motion from the stationary room shutter.
+- Hit bubbles in song-effect-1792713505244 use a distinct cyan/fading material. All 19 batches decode; 150 intermediate particles across consecutive frames (239 total particles including first/gapped frames). Match stable random size and preserve native atlas tile.
+- Deku Princess follow-up is documented below; both skeleton and song-effect captures are now available.
+
+Wart body follow-up (2026-10-22)
+- Capture `link-pose-1792721612378.json` identifies the eight-bone `wort` model,
+  signature `b4670e8c455fcc2b`. Its 1872-vertex body starts with coincident skin
+  transforms for bones 0 and 1, so generic slot-zero matching rejects ownership.
+  This is separate from the bubble sorting/deformation issue above.
+- The user's local `zelda2_boss04.gar.lzs` confirms body skin palette `{1,5,7}`
+  and a separate 396-vertex eye using direct bone 3. Match the complete body
+  palette, signature and topology, then use the existing actor hierarchy/history.
+  Retain each palette slot's native bind correction and reject multiple owners.
+- Capture replay: 84 body draws; all 53 consecutive changing samples interpolate
+  in all three body slots (previously zero). The eye retains 53/53 changing
+  midpoints. Gaps and first samples seed history instead of bridging missing data.
+- Camera midpoint tests cover the coincident-bone regression, all body branches,
+  eye-before-body draw order, repeat draws, disabled mode, mismatched palettes,
+  topology/signature changes, duplicate owners, generations, gaps and teleports.
+  Live visual confirmation remains outstanding; no game assets are bundled.
+
+Cow tail and ghost balloon follow-up (2026-10-22)
+- Cow capture `link-pose-1792724628330.json` identifies signature
+  `bd01809703b206e7`, shared by the local `cow` and `cow2` models. All five
+  local tail joints (5–9) contain shear and fail ordinary rotation decomposition.
+  Interpolate bounded affine steps only for these joints, with the exact ten-bone
+  topology verified; reconstruct the chain in its interpolated parent frames.
+- Replay accepts all 360 consecutive local tail steps. Each of the four distal
+  tail palette slots has 72/72 meaningful midpoints; the tail-root slot has 24/72
+  above the palette matching tolerance (the remaining changes are very small).
+  Head/body behavior is retained. The capture is truncated but has usable pairs.
+- Balloon capture `link-pose-1792724905266.json` is `ghost_balloon` in the local
+  `zelda2_po_fusen.gar.lzs`, signature `ae6056c772fdbd26`, not Tingle's balloon.
+  Its body joint 1 has genuine local shear and fails rigid interpolation in all
+  42 consecutive pairs. Use bounded affine interpolation only for this joint,
+  guarded by its exact nine-bone topology. Arms and hanging pieces retain the
+  ordinary hierarchy interpolation.
+- Replay now produces 42/42 meaningful body midpoints across all five meshes
+  (1350, 72, 36, 54 and 264 vertices), previously zero. No animation clock or
+  game asset changes are involved. One arm frame also had a skin transform
+  coincident with the root. The verified complete 1350-vertex palette
+  `{3,4,2,1,8,6,7,5}` disambiguates it while preserving native bind corrections;
+  generic matching tolerances are unchanged. All eight body slots now produce
+  42/42 meaningful midpoints, including the arm crossing.
+- Regression tests exercise both hierarchies, nearby instances in reversed draw
+  order, native palette preservation, symmetric deformation, repeated balloon
+  draws and separate meshes, unrelated skeletons/topologies, collapsed/large/
+  nonfinite steps, teleports, disabled interpolation, generations and frame gaps.
+  Azahar and camera midpoint tests build successfully; the camera midpoint
+  CTest and `git diff --check` pass. Live visual confirmation remains outstanding
+  after relaunch; the running emulator was left untouched. No game assets are bundled.
+
+Pictograph high-resolution display (2026-10-22)
+- Graphics now exposes "HD Pictograph photos (restart required)", enabled by
+  default. The saved `hd_pictograph_photos` preference is latched when a game
+  session initializes; changing it cannot invalidate active surfaces or saves.
+  Disabled sessions bypass photo pixel/JPEG inspection, HD GPU capture/binding,
+  PNG reads and writes, and HD-specific frame widening. Native photo capture,
+  subject checks and Gear placement/scale remain. Existing HD PNGs are retained.
+  Hook tests cover zero HD backend operations/guest reads while disabled;
+  layout tests cover native preview/frame dimensions and retained Gear controls;
+  settings and upgrade tests cover default-on and a persistent disabled choice.
+- Hooks verify USA code words at shutter return188de0, accepted-photo188fb0,
+  JPEG import609fbc, and picture binding1b6d38. Shared conversion120648 and
+  destruction198868 retain their independent pause-background handling.
+- Copy the linear display buffer's scaled GPU surface before native JPEG
+  downsampling. Private RGBA8 surfaces use their full extent at scale1 so host
+  downloads preserve resolution. Native JPEG/MPO and subject checks are untouched.
+- Accepted photographs write optional hash-keyed stereo PNGs in
+  config/mm3d-local/pictographs. PNGs are rotated upright and corrected to16:9;
+  they are user-generated files, not bundled assets. Missing/corrupt files fall
+  back to the original saved image. Previously taken photos cannot gain detail.
+- Only capture-owned512x256RGB565 uploads can be replaced, and six decoded-pixel
+  probes must validate upload orientation. Photo replacement uses full brightness,
+  distinct from the pause scene's quarter-brightness shader path.
+- The bound photo/frame layout widens by16/15 around the screen center, composed
+  with existing Gear photo position/scale. Ordinary pause snapshots are unchanged.
+- Hook fixtures verify binary words, replayed-instruction inputs, ownership,
+  cancel/keep/import isolation, corrupt data, and no guest/save-memory writes.
+  Live visual verification still required for shutter preview, Keep, Gear reload,
+  stereo orientation, and PNG framing on the user's running game after restart.
+
+Deku Princess eye motion (2026-10-22)
+- Skeleton capture1792713857784 identifies deknuts_queen, signature91e28867df89d7bc,
+  25 bones. Its separately drawn24-vertex eye mesh matches direct bones9 and12;
+  both transforms are identical in every captured pose. Generic unique-bone
+  identification therefore rejected the eyes while the body interpolated.
+- Allow this verified mesh/skeleton through the existing equivalent-bone route.
+  All matching bones must agree on the interpolated transform, and ownership must
+  remain unique. Divergent histories, unrelated meshes, disabled interpolation,
+  frame gaps, and coincident instances retain the existing rejection rules.
+- Replayed90 eye draws from the capture: before,0/60 consecutive moving samples
+  received an intermediate transform; after,60/60 do. Regression coverage checks
+  shared-head motion plus the rejection cases above.
+- Song-effect capture1792715009328 confirms the eye draw switches between separate
+  textures (167/8/4 sampled draws), with unchanged UV bases. The local archive's
+  dn_queen_eye.cmab contains four32x32 eye textures. Blink artwork/timing is left
+  native; this fix addresses eye geometry following the moving head at30fps.
+- Validation: azahar and mm3d_camera_midpoint_tests build successfully; camera
+  midpoint regressions, CPU vertex replay, and photo lifecycle tests pass.
+  Live visual confirmation is pending; the running emulator was not restarted.
+
+Pictograph shader validation follow-up (2026-10-22)
+- The headless atlas GPU fixture now supplies has_separable_shaders, matching the
+  real Vulkan renderer. Its previous zero-initialized profile omitted SPIR-V
+  input locations and failed before testing the photo changes.
+- With the renderer's profile, generated PICA shaders compile and the GPU atlas
+  fixture passes selected/inverse masks, orientation,2x scaling, and reset.
+  Separate2D/cubemap photo shader checks and photo lifecycle CPU tests also pass.
+
+Koume target minigame (2026-10-22)
+- Skeleton capture1792716099763 and local zelda2_tru.gar.lzs identify the
+  one-bone tru_mato1_model target (036049aec268c4f9) and tru_kusari1_mod chain
+  (22fef6cc8a39263c). The144/600-vertex draws share a root within the normal
+  palette tolerance, so generic unique-owner matching rejected their pair.
+- Admit only this model pair, its captured mesh sizes, identity binds, distinct
+  instances/models, and one-root topology. Track both histories and require
+  intermediate transforms to agree. Independent targets continue through the
+  ordinary unique-owner path; unmatched or divergent objects remain native.
+- Replay before/after: target58 consecutive moving draws,29 ->58 interpolated;
+  chain29 consecutive moving draws,0 ->29 interpolated. The capture reached its
+  8192-draw limit, so these counts describe its recorded portion only.
+- Regression cases cover translation/rotation, reversed owner order, disabling,
+  unknown meshes, extra/unrelated owners, changed binds, frame gaps, and
+  coincident current transforms with different movement histories.
+- Live visual confirmation remains pending; the running emulator is untouched.
+
+Pictograph high-resolution crash (2026-10-22)
+- macOS report azahar-2026-10-22-204441.ips faults in StreamBuffer::Map from
+  BindPhoto. The log records a2800x1680 capture (7x), followed by the staging-size
+  assertion. Its18816000-byte RGBA read exceeds the runtime's16MiB download ring.
+- PhotoTransfer::Read now downloads private RGBA surfaces in whole-row batches
+  of at most8MiB, copying each completed batch before staging can be reused.
+  KeepPhoto uses it for full-resolution export; BindPhoto downloads only its six
+  small orientation probe patches. No resolution reduction or staging-ring growth.
+- The --photo-readback GPU fixture exercises production upload/download paths
+  at6x,7x,16x and the largest imported16:9 photo. Coordinate patterns check every
+  pixel through staging wrap, partial final batches, offset rectangles, and probe
+  patches; invalid/empty rectangles must fail safely.
+
+Pictograph preview and save follow-up (2026-10-22)
+- Capture1792716516265 records180 draws for each bound photo texture; layout
+  replay flags228 show native success and photo binding but no midpoint replay.
+  The generic HUD gate excluded all pause-style bindings outside inventory.
+  Verified photo bindings3/4 now enter that existing replay path with their
+  texture and shader override intact. Pause backdrop handling is unchanged.
+- The captured photo pane uses UVs0..400/512 and0..240/256. Flipped photo sampling
+  must therefore use240/256 as its upper V, not1.0; otherwise sixteen padding
+  rows produce a black stripe and shift the image within the frame.
+  --photo-sampling checks the production shader remapping on the GPU in both
+  orientations using coordinate colors across the entire photo rectangle.
+- KeepPhoto now snapshots each actual eye once, then moves rotation, resampling,
+  PNG encoding and atomic file publication to one background worker. Mono eyes
+  share immutable pixels. Only the active job and newest pending photo can be
+  queued; shutdown drains the newest accepted save. Latest kept pixels remain
+  available for an immediate Gear reopen before the PNG files finish writing.
+- Save-queue tests check off-thread execution, nonblocking submission while a
+  prior save is held, bounded pending work, and completion on shutdown. Photo
+  binding tests distinguish replayable photos from pause textures/reserved slots.
+- Final validation: azahar, the GPU fixture, photo tests, and camera midpoint
+  tests build successfully. CTest photo lifecycle/save queue, camera midpoint,
+  and CPU vertex replay pass. GPU photo readback passes6x/7x/16x/imported16:9;
+  photo UV sampling and existing atlas masking fixtures pass. In-game preview,
+  Keep responsiveness, and target motion still require the user's next relaunch.
+
+### Photo UV origin and fullscreen frame override follow-up
+
+- The prior sampling fixture used the MFL UV range directly and missed
+  LayoutShader.vsh instruction0xfc, which computes V=1-V. UpCollect's resource
+  V=0..240/256 therefore reaches the fragment shader as16/256..1. Bindings3/4
+  now map respectively1-V andV-16/256; the existing pause mapping is unchanged.
+  The GPU fixture now models the actual vertex-stage output, and both
+  orientations cover the full picture without the16-row black strip.
+- Capture1792716516265 frame4880 draw77 batches the blackboard and gradient
+  frame (12 untextured vertices), and a saved fullscreen override sets clip
+  scale1. Draws78/79 sample the picture with clip scale15/16. This mismatched
+  scaling creates the thick side borders. The verified gradient frame/batch
+  is exempted from that override; fullscreen fades retain their rules.
+- UpCollect's native208x128 frame around200x120 is widened to retain four
+  pixels on every edge. Only its draw-time geometry is staged and restored;
+  Gear position/scale and shutter-preview placement continue to compose.
+- Validation: native inventory checks pass, including geometry restoration;
+  headless Vulkan --photo-sampling passes using actual shader UVs. Live game
+  appearance still needs validation after restarting into the new executable.
+
+### Photo orientation and animated/viewer frame follow-up
+
+- User screenshots showed an upside-down preview despite an upright saved PNG,
+  plus remaining frame padding during opening and in Gear. Inspected the latest
+  saved PNG365514cd...: the captured picture itself is upright and complete.
+- The private surface always stores display-buffer rotation: PNG(x,y) maps to
+  texture(1-y,x). Capture, cached reopening, and PNG import share that convention.
+  Native JPEG tiling only validates the upload; its inferred orientation cannot
+  determine the private surface's orientation. BindPhoto now uses binding4 for
+  that fixed convention and removes the JPEG/source color-correlation guess and
+  its GPU readbacks. Native JPEG and saved image bytes remain untouched.
+- UpCollect's frame can draw alone or with its blackboard. Register packing varies
+  with batching; fixed color registers91/95 were too restrictive. Recognize the
+  frame's aspect ratio and four BGR gradient colors through the referenced color
+  index, allowing native fade alpha and movement/scale. Only a black backdrop can
+  share this corrected batch. Unrelated fullscreen fades retain their overrides.
+- Replayed all180 frame batches from capture1792716516265 successfully. Regression
+  cases cover single/batched frames, different color-register placements,
+  scale0.45..1.2, fade alpha0..1, movement, and unrelated gradients/fades.
+- The GPU photo sampling fixture now uploads and samples an actual rotated image
+  with known upright rows/columns. It uses the production binding constant, so
+  reversing the photo fails instead of merely demonstrating two possible flips.
+  It passes on Metal; camera midpoint and photo lifecycle tests also pass.
+  Live opening-animation and saved-viewer confirmation remains a user test.
+
+### Stone Tower fire, Eyegore, and Giant Link follow-up
+
+The fire-ring/updraft song capture `1792760588323` identifies four exact
+material/mesh/UV patterns. Their scrolling layers use one wrapped phase so the
+layers stay aligned across resets. The ring's third layer also pulses in height;
+interpolate that UV scale as well as its offsets. Shader, active texture mask,
+blend/depth state, TEV material and UV bases must all match. Texture addresses
+key history but do not identify the effect. CPU and GPU replay modify private
+midpoint uniforms only. Gaps, generation changes, unexpected phase speeds and
+conflicting submissions reseed or remain native; unused UV rows stay untouched.
+Replay recognizes 222 ring, 333 core, 333 sheet and 1,660 ember draws, producing
+148 / 222 / 222 / 1,105 consecutive-frame midpoint draws respectively.
+
+Garo Master's sword-flame capture `1792760717446` has a fifth exact UV pattern
+and two CPU-generated moving strips. Verify the 54-index / 20-input topology and
+all three UV sets; the unused color attribute contains stale values and must be
+preserved. Match complete strips in world space independently of draw order,
+with bounded movement, nearest-candidate separation and one previous strip per
+current sword. Frame/scene gaps reset tracking. UV replay covers all 76 usable
+frame pairs. Geometry returns 67 midpoint strips (59 actually moving); nine
+ambiguous fast crossings deliberately retain native geometry. This remaining
+fallback needs live evaluation rather than a looser ownership guess.
+
+Eyegore captures `1792760938711` and `1792760965706` expose coincident skin
+transforms that make generic bone/owner matching ambiguous. Verify the complete
+22-joint topology and seven native mesh palettes; retain the native bind
+correction without expanding generic tolerances. Both replays now cover every
+active slot of all seven meshes in 36 and 38 usable frame pairs. Tests include
+coincident rest joints, camera motion, full palette validation and ambiguous
+actor ownership.
+
+Giant Link's boulder capture `1792761204870` uses 318-vertex gripping hands,
+instead of the previously covered 234-vertex fists. Both meshes are verified
+against the local human Link model and retain its existing giant-form scale and
+whole-palette checks. Replay now covers both gripping hands and both connected
+arm palettes in all 48 usable pairs each (192 mesh draws total).
+
+Twinmold punch/swing captures `1792761518687` and `1792761575004` expose motion
+near/beyond the ordinary 100-unit actor continuity cutoff. Allow up to 200 units
+of world-space root movement only for the full verified Twinmold topology, shared
+by red and blue models. One terminal head joint also needs the existing bounded
+affine deformation fallback for small shears during swinging; other joints keep
+the normal hierarchy. Fixed-camera replay covers all 870 usable punch mesh draws
+and 848 swing mesh draws, including frames formerly dropped at the cutoff.
+The short red capture `1792761608754` already passes its 1,382 usable mesh draws;
+it shares the same guarded correction. Skeleton captures lack camera samples,
+so replay does not establish actual world-space speed; synthetic tests separately
+verify moving-camera cancellation, fast swings and rejection of teleports.
+
+These are capture replay and automated-test results, not live visual confirmation.
+The running emulator is left untouched; the new executable must be loaded for
+in-game assessment. No model or texture assets are included with these changes.
+
+### Gekko's green jelly bubbles (Great Bay Temple)
+
+Skeleton capture `1792762543633` identifies `muddjelly_small` from the local
+`zelda2_bigslime` model. Its two 216-vertex surfaces use direct bones 1 and 2;
+all three bones and their identity binds coincide. Generic ownership therefore
+rejects every draw. Its 15 model slots also change physical bubble ownership:
+43 same-slot steps jump, with a maximum view-space displacement of 738 units.
+Do not use the model-instance address as the bubble's identity.
+
+A separate, bounded jelly history verifies signature `b7bb8c8a4e2368b2`, the
+three-word topology, identity binds and coincident bones. Match the complete
+world-space pool reciprocally using position, model/generation and valid
+transform interpolation. Require separation from the second candidate and a
+64-unit movement bound. Use rotation/scale interpolation where possible, with
+the existing bounded affine fallback for small deformations. Both surfaces use
+the same intermediate direct matrix. Ambiguous overlaps remain native.
+
+Follow-up capture `1792762637761` contains the combined jelly rather than the
+small bubbles. The local `muddjelly`, `muddjelly_sub`, `muddjelly_ura` and
+`muddjelly_ura_s` models share signature `e4e4b9a66b715b85`, an identity bind and
+960-vertex direct-root surfaces. Their front/back model instances alternate each
+frame, leaving no consecutive instance pairs. Canonicalize identical front/back
+submissions only for this verified one-bone model family, then track its motion
+independently of the small-jelly pool. The separate triangular bubble particles
+already receive intermediate matrices and keep their existing path.
+
+Fixed-camera replay changes 1,348 of 1,350 usable small-jelly draws; one ambiguous
+physical match (two surfaces) remains native. All 104 usable combined-jelly draws
+receive intermediate matrices, 102 of which differ from native. Skeleton
+captures do not contain the world camera; synthetic tests separately cover
+camera motion, rotating bubbles, swapped slots, alternating front/back models,
+small shear, reciprocal ownership, duplicate submissions, generation changes,
+frame gaps, teleport rejection, disabled mode and bounded pool capacity.
+These are capture/test results; in-game appearance needs checking with the new
+executable. Neither the running game nor guest/native draw matrices are changed.
+
+### October 23 Majora whip follow-up
+
+The new `link-pose-1792765408773.json` capture contains `majora_demon`
+(`18ccb05513137730`, 113 bones). All twelve known whip palettes still match:
+1,080 draws, including 720 consecutive draw pairs. Offline replay produces all
+active palette overrides for all 720 pairs. Every joint's local midpoint passes
+its existing decomposition/scale checks. This does **not** verify the visible
+result reported by the user; no tentacle animation change was made on that basis.
+
+Skeleton captures now include schema-3 `replays` alongside the unchanged native
+`draws`/`actors`. These record rendering eligibility gates, camera-match/fallback
+state, CPU versus accelerated replay, available pose count, changed/overridden
+palette masks, maximum uniform delta, native camera, and whether the midpoint
+draw was submitted. Join by frame, vertex base, index offset and vertex count.
+The masks are palette slots, not global skeleton bone indices. Collection is
+bounded and active only during an explicitly requested capture; it makes no
+animation or guest-memory changes. This evidence is needed to distinguish an
+animation calculation problem from discarded intermediate rendering.

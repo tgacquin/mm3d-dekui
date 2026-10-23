@@ -19,18 +19,69 @@ inline constexpr Pattern Patterns[]{
     // Romani Ranch alien beam: scrolling outer layer and inner glow.
     {324,7,{1.0f,1.0f,4.0f,1.0f,2.0f,2.0f},{-0.008333333333333333f,0.0f,-0.016666666666666666f,0.0f,0.0f,0.0f},{1.0f,0.0f,2.0f,0.0f,0.0f,0.0f},{{{89130307u,196608u,65537u,2724257279u,0u},{250547807u,0u,65545u,2724257279u,0u},{236916709u,0u,8u,4278205526u,0u},{250547807u,0u,65536u,889192448u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
     {180,3,{2.0f,2.0f,2.0f,2.0f,0.0f,0.0f},{0.0f,0.0f,0.0f,0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f,0.0f,0.0f,0.0f},{{{239079139u,393216u,65537u,2717941631u,1u},{250547743u,0u,65536u,2717941631u,0u},{250547743u,0u,65536u,889192448u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    // Mirror-shield beam, rotating halo and end glow.
+    {60,7,{},{},{},{{{240127555u,458752u,65537u,3118137343u,0u},{250547807u,0u,65545u,3118137343u,1u},{250547743u,0u,65536u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {90,7,{},{},{},{{{249564739u,0u,65537u,3959422976u,1u},{250547807u,0u,65538u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
+    {30,7,{},{},{},{{{249564739u,0u,65537u,2181038080u,1u},{250547807u,0u,65537u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u},{268374015u,0u,0u,4294967295u,0u}}}},
 };
 inline bool Mirrored(unsigned kind){return kind==2 || kind==3;}
-inline bool AnimatedColors(unsigned kind){return kind==4 || kind==5;}
+inline bool MirrorLight(unsigned kind){return kind>=6 && kind<=8;}
+inline bool AnimatedColors(unsigned kind){return kind>=4 && kind<=8;}
 inline unsigned Rows(unsigned kind){return Patterns[kind].mask==7?6:4;}
+inline bool MirrorRotation(const Values& uv,unsigned row) {
+    const auto& a=uv[row];const auto& b=uv[row+1];
+    for(float f:a)if(!std::isfinite(f))return false;
+    for(float f:b)if(!std::isfinite(f))return false;
+    return std::abs(a[0]*a[0]+a[1]*a[1]-4)<.001f &&
+        std::abs(b[0]+a[1])<1e-5 && std::abs(b[1]-a[0])<1e-5 &&
+        std::abs(a[2])+std::abs(b[2])<1e-5 &&
+        std::abs(a[3]-(1.f-.5f*(a[0]+a[1])))<1e-5 &&
+        std::abs(b[3]-(1.f-.5f*(b[0]+b[1])))<1e-5;
+}
+inline bool MirrorUV(unsigned kind,const Values& uv) {
+    if(!MirrorLight(kind))return false;
+    for(const auto& row:uv)for(float f:row)if(!std::isfinite(f))return false;
+    if(kind==6) {
+        if(!MirrorRotation(uv,4))return false;
+        for(unsigned r=0;r<4;++r)for(unsigned c=0;c<3;++c)
+            if(std::abs(uv[r][c]-(c==r%2?(r==0?3.f:r==2?4.f:1.f):0.f))>1e-5)return false;
+        return std::abs(uv[1][3])+std::abs(uv[3][3])<1e-5;
+    }
+    if(!MirrorRotation(uv,0) || !MirrorRotation(uv,2))return false;
+    if(std::abs(uv[0][0]-uv[2][0])>1e-5 || std::abs(uv[0][1]+uv[2][1])>1e-5)return false;
+    return uv[4]==std::array<float,4>{2,0,0,0} && uv[5]==std::array<float,4>{0,2,0,0};
+}
+inline std::optional<Values> MirrorUVHalf(unsigned kind,const Values& a,const Values& b) {
+    if(!MirrorUV(kind,a) || !MirrorUV(kind,b))return {};
+    Values out=b;const unsigned row=kind==6?4:0;
+    const double old_angle=std::atan2(a[row+1][0],a[row][0]);
+    const double angle=std::atan2(b[row+1][0],b[row][0]);
+    const double delta=std::remainder(angle-old_angle,2*3.141592653589793);
+    // The captured animation advances 0.75 degrees per native frame.
+    if(std::abs(delta)>.00001 && std::abs(delta-3.141592653589793/240)>.0001)return {};
+    const auto rotation=[&](unsigned r,double theta) {
+        const float c=2*std::cos(theta),s=2*std::sin(theta);
+        out[r]={c,-s,0,1.f-.5f*(c-s)};out[r+1]={s,c,0,1.f-.5f*(s+c)};
+    };
+    rotation(row,angle-delta*.5);
+    if(kind!=6)rotation(2,-(angle-delta*.5));
+    else for(unsigned r:{0u,2u}) {
+        const float period=r==0?3.f:4.f,expected=r==0?-.025f:1.f/30;
+        float step=b[r][3]-a[r][3];step-=std::round(step/period)*period;
+        if(std::abs(step)>1e-6 && std::abs(step-expected)>1e-5)return {};
+        out[r][3]-=step*.5f;
+    }
+    return out;
+}
 inline std::optional<unsigned> Identify(unsigned vertices,unsigned mask,const Values& uv,const Tev& material) {
     for(unsigned k=0;k<std::size(Patterns);++k){
         const auto& p=Patterns[k];
         if(vertices!=p.vertices || mask!=p.mask)continue;
         auto matched_material=material;
-        if(AnimatedColors(k))for(unsigned stage=0;stage<(k==4?4u:3u);++stage)
+        if(AnimatedColors(k))for(unsigned stage=0;stage<(k==4?4u:k==5?3u:k==6?2u:1u);++stage)
             matched_material[stage][3]=p.material[stage][3];
         if(matched_material!=p.material)continue;
+        if(MirrorLight(k)){if(MirrorUV(k,uv))return k;continue;}
         bool valid=true;
         for(unsigned r=0;r<Rows(k);++r)for(unsigned c=0;c<4;++c)
             valid &= std::isfinite(uv[r][c]) && (c==3 || std::abs(uv[r][c]-(c==r%2?p.basis[r]:0.f))<1e-5);
@@ -48,8 +99,11 @@ inline std::optional<Sample> Midpoint(unsigned kind,const Sample& old,const Samp
         if(!std::isfinite(a)||!std::isfinite(b)||a<0||a>1||b<0||b>1)return {};
         half.colors[stage][c]=(a+b)*.5f;
     }
+    const auto mirror=MirrorLight(kind)?MirrorUVHalf(kind,old.uv,now.uv):std::optional<Values>{};
+    if(MirrorLight(kind) && !mirror)return {};
+    if(mirror)half.uv=*mirror;
     bool moving=true,stationary=true;
-    for(unsigned r=0;r<Rows(kind);++r){
+    for(unsigned r=0;r<(MirrorLight(kind)?0:Rows(kind));++r){
         for(unsigned c=0;c<4;++c)if(!std::isfinite(old.uv[r][c]) || !std::isfinite(now.uv[r][c]) ||
             (c<3 && (std::abs(old.uv[r][c]-(c==r%2?p.basis[r]:0.f))>1e-5 ||
                      std::abs(now.uv[r][c]-(c==r%2?p.basis[r]:0.f))>1e-5)))return {};

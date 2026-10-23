@@ -19,7 +19,8 @@
     {
       "id": "0043",
       "start": "Touchez ",
-      "text": "Appuyez sur ZL pour viser.\nAppuyez sur {A} pour prendre\nune photo."
+      "text": "Appuyez sur ZL pour viser.\nAppuyez sur {A} pour prendre\nune photo.",
+      "stick_click_text": "Appuyez sur le stick droit\npour viser, puis sur {A}\npour prendre une photo."
     },
     {
       "id": "0078",
@@ -54,12 +55,14 @@
     {
       "id": "026b",
       "start": "Si tu préfères",
-      "text": "Pour les cases I et II,\nmaintiens ZR et appuie sur\n{X} ou {Y} pour assigner un objet."
+      "text": "Pour les cases I et II,\nmaintiens ZR et appuie sur\n{X} ou {Y} pour assigner un objet.",
+      "stick_click_text": "Pour la case I, appuie sur ZL.\nPour la case II, appuie sur ZR."
     },
     {
       "id": "026b",
       "start": "Quand tes objets",
-      "text": "Utilise le même bouton ou\nla même combinaison pour\nutiliser l'objet. Facile!"
+      "text": "Utilise le même bouton ou\nla même combinaison pour\nutiliser l'objet. Facile!",
+      "stick_click_text": "Appuie sur le même bouton\npour utiliser l'objet. Facile!"
     },
     {
       "id": "0270",
@@ -84,7 +87,8 @@
     {
       "id": "1d18",
       "start": "Tu peux ",
-      "text": "La mini-carte est en bas\nà droite. ZR + SELECT permet\nde l'afficher ou de la masquer."
+      "text": "La mini-carte est en bas\nà droite. ZR + SELECT permet\nde l'afficher ou de la masquer.",
+      "stick_click_text": "La mini-carte est en bas à droite.\nAppuyez sur le stick gauche\npour l'afficher ou la masquer."
     },
     {
       "id": "1d18",

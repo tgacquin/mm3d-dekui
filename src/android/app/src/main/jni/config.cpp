@@ -105,7 +105,9 @@ void Config::ReadSetting(const std::string& group, Settings::Setting<Type, range
 void Config::ReadValues() {
     // Controls
     for (int i = 0; i < Settings::NativeButton::NumButtons; ++i) {
-        std::string default_param = InputManager::GenerateButtonParamPackage(default_buttons[i]);
+        std::string default_param = i >= Settings::NativeButton::LeftStickClick
+                                        ? std::string{}
+                                        : InputManager::GenerateButtonParamPackage(default_buttons[i]);
         Settings::values.current_input_profile.buttons[i] = android_config->GetString(
             "Controls", Settings::NativeButton::mapping[i], default_param);
         if (Settings::values.current_input_profile.buttons[i].empty())

@@ -4,6 +4,12 @@
 
 #include <stdexcept>
 #include <utility>
+#ifdef ENABLE_MM3D_PRESENTATION
+#include "mm3d/translation.h"
+#ifdef ANDROID
+#include "common/android_utils.h"
+#endif
+#endif
 #include <boost/serialization/array.hpp>
 #include "audio_core/dsp_interface.h"
 #include "audio_core/hle/hle.h"
@@ -320,6 +326,17 @@ System::ResultStatus System::Load(Frontend::EmuWindow& emu_window, const std::st
 
     u64_le program_id = 0;
     app_loader->ReadProgramId(program_id);
+#ifdef ENABLE_MM3D_PRESENTATION
+    // Pin a validated translation for this session. UI changes apply on restart.
+    MM3D::Translation::active.store(nullptr);
+    if (program_id == 0x0004000000125500ULL) {
+        auto directory = FileUtil::GetUserPath(FileUtil::UserPath::ConfigDir) + "mm3d-local/";
+#ifdef ANDROID
+        directory = AndroidUtils::TranslateFilePath(directory);
+#endif
+        MM3D::Translation::Mount(directory);
+    }
+#endif
     if (restore_plugin_context.has_value() && restore_plugin_context->is_enabled &&
         restore_plugin_context->use_user_load_parameters) {
         if (restore_plugin_context->user_load_parameters.low_title_Id ==

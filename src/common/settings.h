@@ -162,6 +162,10 @@ enum Values {
     Home,
     Power,
 
+    // Host-only auxiliary inputs; never included in 3DS HID/IR/NS bit ranges.
+    LeftStickClick,
+    RightStickClick,
+
     NumButtons,
 };
 
@@ -171,7 +175,7 @@ constexpr int BUTTON_NS_BEGIN = Power;
 
 constexpr int BUTTON_HID_END = BUTTON_IR_BEGIN;
 constexpr int BUTTON_IR_END = BUTTON_NS_BEGIN;
-constexpr int BUTTON_NS_END = NumButtons;
+constexpr int BUTTON_NS_END = LeftStickClick;
 
 constexpr int NUM_BUTTONS_HID = BUTTON_HID_END - BUTTON_HID_BEGIN;
 constexpr int NUM_BUTTONS_IR = BUTTON_IR_END - BUTTON_IR_BEGIN;
@@ -196,6 +200,8 @@ static const std::array<const char*, NumButtons> mapping = {{
     "button_zr",
     "button_home",
     "button_power",
+    "button_left_stick_click",
+    "button_right_stick_click",
 }};
 
 } // namespace NativeButton

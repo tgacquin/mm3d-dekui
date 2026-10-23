@@ -308,7 +308,13 @@ bool Settings::Load(const QString& path) {
         player_hud.x[i]=int(value((prefix+"x").toUtf8().constData(),0,-400,400));
         player_hud.y[i]=int(value((prefix+"y").toUtf8().constData(),0,-240,240));
     }
-    accurate_hle_audio=object.value("accurate_hle_audio").toBool(true);
+    // One-time migration of every older audio preference to Balanced. Keep the
+    // stored mode IDs stable; the marker preserves later Accurate HLE choices.
+    const auto audio_mode=object.value("hle_audio_accuracy");
+    const int requested_mode=audio_mode.toInt(-1);
+    hle_audio_accuracy=object.value("hle_audio_mode_version")==QJsonValue(1) &&
+        audio_mode.isDouble() && audio_mode.toDouble()==requested_mode &&
+        requested_mode>=1 && requested_mode<=2?requested_mode:1;
     mute_music=object.value("mute_music").toBool(false);
     disable_low_health_beep=object.value("disable_low_health_beep").toBool(false);
     disable_heart_drops=object.value("disable_heart_drops").toBool(false);
@@ -331,9 +337,20 @@ bool Settings::Load(const QString& path) {
     dialogue_indicator_y=value("dialogue_indicator_y",0.f,-64.f,64.f);
     double_prices = object.value("double_prices").toBool(false);
     price_multiplier = std::clamp(object.value("price_multiplier").toInt(2),2,3);
+    stick_click_controls = object.value("stick_click_controls").toBool(false);
     single_screen_text = object.value("single_screen_text").toBool(true);
     fix_bloom = object.value("fix_bloom").toBool(true);
     disable_fog = object.value("disable_fog").toBool(false);
+    hd_pictograph_photos = object.value("hd_pictograph_photos").toBool(true);
+    ambient_occlusion = AmbientOcclusion::Sanitize({
+        object.value("ambient_occlusion").toBool(false),
+        float(object.value("ambient_occlusion_strength").toDouble(.6)),
+        float(object.value("ambient_occlusion_radius").toDouble(40))});
+    depth_of_field = DepthOfField::Sanitize({
+        object.value("depth_of_field").toBool(false),
+        float(object.value("depth_of_field_focus").toDouble(600)),
+        float(object.value("depth_of_field_transition").toDouble(1200)),
+        float(object.value("depth_of_field_strength").toDouble(1.5))});
     interpolation_60fps = object.value("interpolation_60fps").toBool(true);
     interpolation_cpu_vertices = object.value("interpolation_cpu_vertices").toBool(true);
     red_potion_hearts = std::clamp(object.value("red_potion_hearts").toInt(20),1,20);
@@ -415,9 +432,14 @@ bool Settings::Save(const QString& path) const {
     if (save_blocked) return false;
     QSaveFile file(path); // atomic replacement; no direct-write fallback
     if (!file.open(QIODevice::WriteOnly)) return false;
-    QJsonObject object{{"version", 1}, {"accurate_hle_audio",accurate_hle_audio}, {"damage_multiplier",damage_multiplier}, {"disable_heart_drops",disable_heart_drops}, {"disable_rupee_drops",disable_rupee_drops}, {"disable_fairy_drops",disable_fairy_drops}, {"disable_magic_drops",disable_magic_drops}, {"disable_ammo_pickups",disable_ammo_pickups}, {"lose_rupees_on_death",lose_rupees_on_death}, {"world_ends_on_death",world_ends_on_death}, {"advance_six_hours_on_death",advance_six_hours_on_death}, {"fast_time",fast_time}, {"double_prices",double_prices}, {"price_multiplier",price_multiplier}, {"inventory_panel_x",inventory_menu.x}, {"inventory_panel_y",inventory_menu.y}, {"inventory_panel_scale",inventory_menu.scale}, {"dialogue_scale",dialogue_scale}, {"dialogue_y",dialogue_y}, {"dialogue_background_width",dialogue_background_width}, {"dialogue_indicator_x",dialogue_indicator_x}, {"dialogue_indicator_y",dialogue_indicator_y}, {"indicator", indicator}, {"show_performance", show_performance}, {"show_startup_settings_hint", show_startup_settings_hint},
+    QJsonObject object{{"version", 1}, {"accurate_hle_audio",hle_audio_accuracy==2}, {"hle_audio_accuracy",hle_audio_accuracy}, {"hle_audio_mode_version",1}, {"damage_multiplier",damage_multiplier}, {"disable_heart_drops",disable_heart_drops}, {"disable_rupee_drops",disable_rupee_drops}, {"disable_fairy_drops",disable_fairy_drops}, {"disable_magic_drops",disable_magic_drops}, {"disable_ammo_pickups",disable_ammo_pickups}, {"lose_rupees_on_death",lose_rupees_on_death}, {"world_ends_on_death",world_ends_on_death}, {"advance_six_hours_on_death",advance_six_hours_on_death}, {"fast_time",fast_time}, {"double_prices",double_prices}, {"price_multiplier",price_multiplier}, {"inventory_panel_x",inventory_menu.x}, {"inventory_panel_y",inventory_menu.y}, {"inventory_panel_scale",inventory_menu.scale}, {"dialogue_scale",dialogue_scale}, {"dialogue_y",dialogue_y}, {"dialogue_background_width",dialogue_background_width}, {"dialogue_indicator_x",dialogue_indicator_x}, {"dialogue_indicator_y",dialogue_indicator_y}, {"indicator", indicator}, {"show_performance", show_performance}, {"show_startup_settings_hint", show_startup_settings_hint},
         {"scale", scale}, {"opacity", opacity}, {"x", x}, {"y", y},
-        {"single_screen_text", single_screen_text}, {"fix_bloom", fix_bloom}, {"disable_fog", disable_fog}, {"interpolation_60fps", interpolation_60fps}, {"red_potion_hearts", red_potion_hearts}, {"blue_potion_hearts", blue_potion_hearts}, {"bottled_fairy_hearts", bottled_fairy_hearts}, {"widescreen", widescreen}, {"camera_zoom_out", camera_zoom_out}, {"game_camera_fov", game_camera_fov}, {"cutscene_camera_fov", cutscene_camera_fov}, {"restoration_hud_scale", restoration_hud_scale}, {"minigame_hud_x",minigame_hud.x},{"minigame_hud_y",minigame_hud.y},{"minigame_hud_scale",minigame_hud.scale},{"magic_shadow_enabled",magic_border.shadow_enabled},{"magic_shadow_size",magic_border.shadow_size},{"magic_shadow_opacity",magic_border.shadow_opacity},{"magic_border_enabled",magic_border.enabled},{"magic_border_thickness",magic_border.thickness},{"magic_border_r",magic_border.color[0]},{"magic_border_g",magic_border.color[1]},{"magic_border_b",magic_border.color[2]}, {"magic_bar_y", magic_bar_y}, {"magic_bar_height", magic_bar_height}, {"dpad_y", dpad_y},
+        {"single_screen_text", single_screen_text}, {"stick_click_controls", stick_click_controls}, {"fix_bloom", fix_bloom}, {"disable_fog", disable_fog},
+        {"hd_pictograph_photos", hd_pictograph_photos},
+        {"ambient_occlusion", ambient_occlusion.enabled},
+        {"ambient_occlusion_strength", ambient_occlusion.strength}, {"ambient_occlusion_radius", ambient_occlusion.radius},
+        {"depth_of_field", depth_of_field.enabled}, {"depth_of_field_focus", depth_of_field.focus},
+        {"depth_of_field_transition", depth_of_field.transition}, {"depth_of_field_strength", depth_of_field.strength}, {"interpolation_60fps", interpolation_60fps}, {"red_potion_hearts", red_potion_hearts}, {"blue_potion_hearts", blue_potion_hearts}, {"bottled_fairy_hearts", bottled_fairy_hearts}, {"widescreen", widescreen}, {"camera_zoom_out", camera_zoom_out}, {"game_camera_fov", game_camera_fov}, {"cutscene_camera_fov", cutscene_camera_fov}, {"restoration_hud_scale", restoration_hud_scale}, {"minigame_hud_x",minigame_hud.x},{"minigame_hud_y",minigame_hud.y},{"minigame_hud_scale",minigame_hud.scale},{"magic_shadow_enabled",magic_border.shadow_enabled},{"magic_shadow_size",magic_border.shadow_size},{"magic_shadow_opacity",magic_border.shadow_opacity},{"magic_border_enabled",magic_border.enabled},{"magic_border_thickness",magic_border.thickness},{"magic_border_r",magic_border.color[0]},{"magic_border_g",magic_border.color[1]},{"magic_border_b",magic_border.color[2]}, {"magic_bar_y", magic_bar_y}, {"magic_bar_height", magic_bar_height}, {"dpad_y", dpad_y},
         {"minimap", minimap}, {"minimap_scale", minimap_scale}, {"minimap_opacity", minimap_opacity},
         {"minimap_right_margin", minimap_right_margin}, {"minimap_bottom_margin", minimap_bottom_margin}};
     for(const auto& f:SubmenuHeader::Fields) object.insert(f.key,submenu_header.*f.member);

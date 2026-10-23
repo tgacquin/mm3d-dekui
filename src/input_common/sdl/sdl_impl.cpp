@@ -172,6 +172,8 @@ constexpr std::array<SDL_GameControllerButton, Settings::NativeButton::NumButton
         SDL_CONTROLLER_BUTTON_INVALID,
         SDL_CONTROLLER_BUTTON_GUIDE,
         SDL_CONTROLLER_BUTTON_INVALID,
+        SDL_CONTROLLER_BUTTON_LEFTSTICK,
+        SDL_CONTROLLER_BUTTON_RIGHTSTICK,
     }};
 constexpr std::array<SDL_GameControllerButton, Settings::NativeButton::NumButtons>
     nintendo_to_3ds_mapping = {{
@@ -193,6 +195,8 @@ constexpr std::array<SDL_GameControllerButton, Settings::NativeButton::NumButton
         SDL_CONTROLLER_BUTTON_INVALID,
         SDL_CONTROLLER_BUTTON_GUIDE,
         SDL_CONTROLLER_BUTTON_INVALID,
+        SDL_CONTROLLER_BUTTON_LEFTSTICK,
+        SDL_CONTROLLER_BUTTON_RIGHTSTICK,
     }};
 
 const std::map<Uint8, std::string> axis_names = {

@@ -239,14 +239,15 @@ void IndividualButtonChecks() {
             if(i<4){auto base=pane(bases[i]);children.push_back(base);members[i].push_back(base);}
         }
         auto other=pane("unrelated");children.push_back(other);m.Children(group,children);auto original=m.words;
-        for(int scale:{-5,0,5})for(unsigned selected=0;selected<6;++selected) {
+        for(bool clicks:{false,true,false})for(int scale:{-5,0,5})for(unsigned selected=0;selected<6;++selected) {
+            MM3D::StickControls::Configure(clicks);
             H::Options o;o.overall=scale;o.x[H::Buttons]=7;o.y[H::Buttons]=-3;H::Apply(o);
             hook.Begin(m,hud);auto scaled=m.words;hook.End(m);assert(m.words==original);
             o.button_x[selected]=19;o.button_y[selected]=-11;H::Apply(o);hook.Begin(m,hud);
             for(unsigned i=0;i<6;++i)for(auto n:members[i]) {
                 auto f=[&](U32 off){return std::bit_cast<float>(m.words[n+off])-std::bit_cast<float>(scaled.at(n+off));};
-                assert(std::abs(f(0xec)-(i==selected?19:0))<.0001f);
-                assert(std::abs(f(0xfc)-(i==selected?-11:0))<.0001f);
+                assert(std::abs(f(0xec)-(MM3D::StickControls::ItemLayoutIndex(i,2)==selected?19:0))<.0001f);
+                assert(std::abs(f(0xfc)-(MM3D::StickControls::ItemLayoutIndex(i,2)==selected?-11:0))<.0001f);
                 assert(m.words[n+0xe0]==scaled.at(n+0xe0));
             }
             assert(m.words[other+0xec]==scaled.at(other+0xec));auto adjusted=m.words;

@@ -18,6 +18,8 @@
 #include "mm3d/texture_picker.h"
 #include "mm3d/prompt_layer.h"
 #include "mm3d/atlas_render.h"
+#include "mm3d/pause_capture.h"
+#include "mm3d/photo_capture.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "video_core/shader/generator/glsl_fs_shader_gen.h"
 #include "video_core/shader/generator/glsl_shader_gen.h"
@@ -29,8 +31,11 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_descriptor_update_queue.h"
 #include "video_core/renderer_vulkan/vk_texture_runtime.h"
+#include "video_core/renderer_vulkan/vk_photo_transfer.h"
 #include "video_core/renderer_vulkan/vk_stream_buffer.h"
 
+namespace MM3D { void RunSceneEffectsFixture(const Vulkan::Instance&, Vulkan::Scheduler&); }
+namespace MM3D { void RunGpuInterpolationFixture(const Vulkan::Instance&, Vulkan::Scheduler&); }
 namespace MM3D { void RunVisibilityDepthFixture(const Vulkan::Instance&, Vulkan::Scheduler&); }
 
 class HeadlessWindow final : public Frontend::EmuWindow {
@@ -368,7 +373,7 @@ static void DepthReadbackFixture(const Vulkan::Instance& instance, Vulkan::Sched
 }
 template<class Allocate>
 static void AtlasFixture(vk::Device device,vk::Queue queue,vk::CommandBuffer command,
-                         vk::RenderPass renderpass,Allocate allocate,bool widescreen_only=false) {
+                         vk::RenderPass renderpass,Allocate allocate,bool widescreen_only=false,bool photo_only=false) {
     using namespace Pica::Shader::Generator;
     Require(!Vulkan::CompileGLSL(GLSL::GenerateTrivialVertexShader(false,true),
         vk::ShaderStageFlagBits::eVertex).empty(),"vertex shader accepts widescreen uniform layout");
@@ -379,32 +384,52 @@ static void AtlasFixture(vk::Device device,vk::Queue queue,vk::CommandBuffer com
         return;
     }
     Pica::RegsInternal regs{};
+    // Match the Vulkan renderer: SPIR-V inputs require explicit locations.
     Pica::Shader::Profile profile{}; profile.is_vulkan=true;
+    profile.has_separable_shaders=true;
     const auto generated=GLSL::GenerateFragmentShader(Pica::Shader::FSConfig{regs},{},profile);
     Require(!Vulkan::CompileGLSL(MM3D::Atlas::Shader(generated),vk::ShaderStageFlagBits::eFragment).empty(),
         "real PICA shader accepts atlas extension");
-    const auto vs=Vulkan::CompileGLSL(R"(#version 450
+    std::string vertex_source=R"(#version 450
 layout(location=0) out vec2 texcoord0;
 void main() {
     vec2 p=vec2((gl_VertexIndex<<1)&2,gl_VertexIndex&2);
     texcoord0=vec2(p.x,1-p.y); gl_Position=vec4(p*2-1,0,1);
-})",vk::ShaderStageFlagBits::eVertex);
-    const auto fs=Vulkan::CompileGLSL(MM3D::Atlas::Shader(R"(#version 450
+})";
+    if(photo_only)vertex_source.insert(vertex_source.find(" gl_Position"),
+        " texcoord0 = vec2(p.x*400.0/512.0, 1.0-p.y*240.0/256.0);");
+    const auto vs=Vulkan::CompileGLSL(vertex_source,vk::ShaderStageFlagBits::eVertex);
+    std::string fragment_source=R"(#version 450
 layout(location=0) in vec2 texcoord0;
 layout(location=0) out vec4 color;
 layout(binding=2,std140) uniform fs_data { vec4 padding[82]; vec4 blend_color; };
 void main() { color=vec4(1,0,0,1); }
-)"),vk::ShaderStageFlagBits::eFragment);
+)";
+    if(photo_only) {
+        const auto at=fragment_source.find("void main()");
+        fragment_source.replace(at,std::string::npos,R"(
+// Sample a real rotated display surface with a known upright image.
+layout(binding=0) uniform sampler2D tex0;
+vec4 sampleTexUnit0() { return vec4(1,0,1,1); }
+void main() { color=sampleTexUnit0(); }
+)");
+    }
+    fragment_source=MM3D::Atlas::Shader(fragment_source);
+    const auto fs=Vulkan::CompileGLSL(fragment_source,vk::ShaderStageFlagBits::eFragment);
     Require(!vs.empty() && !fs.empty(),"compile atlas fixture");
     auto vert=device.createShaderModuleUnique({.codeSize=vs.size()*4,.pCode=vs.data()});
     auto frag=device.createShaderModuleUnique({.codeSize=fs.size()*4,.pCode=fs.data()});
     const vk::DescriptorSetLayoutBinding binding{.binding=2,.descriptorType=vk::DescriptorType::eUniformBuffer,
         .descriptorCount=1,.stageFlags=vk::ShaderStageFlagBits::eFragment};
-    auto layout=device.createDescriptorSetLayoutUnique({.bindingCount=1,.pBindings=&binding});
+    const std::array bindings{binding,vk::DescriptorSetLayoutBinding{.binding=0,
+        .descriptorType=vk::DescriptorType::eCombinedImageSampler,.descriptorCount=1,
+        .stageFlags=vk::ShaderStageFlagBits::eFragment}};
+    auto layout=device.createDescriptorSetLayoutUnique({.bindingCount=photo_only?2u:1u,.pBindings=bindings.data()});
     const auto layout_handle=*layout;
     auto pipeline_layout=device.createPipelineLayoutUnique({.setLayoutCount=1,.pSetLayouts=&layout_handle});
-    const vk::DescriptorPoolSize pool_size{vk::DescriptorType::eUniformBuffer,1};
-    auto pool=device.createDescriptorPoolUnique({.maxSets=1,.poolSizeCount=1,.pPoolSizes=&pool_size});
+    const std::array pool_sizes{vk::DescriptorPoolSize{vk::DescriptorType::eUniformBuffer,1},
+        vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler,1}};
+    auto pool=device.createDescriptorPoolUnique({.maxSets=1,.poolSizeCount=photo_only?2u:1u,.pPoolSizes=pool_sizes.data()});
     const auto set=device.allocateDescriptorSets({.descriptorPool=*pool,.descriptorSetCount=1,.pSetLayouts=&layout_handle})[0];
     vk::UniqueDeviceMemory uniform_mem,image_mem,read_mem;
     auto uniform=device.createBufferUnique({.size=sizeof(FSUniformData)+sizeof(MM3D::Atlas::Uniforms),.usage=vk::BufferUsageFlagBits::eUniformBuffer});
@@ -440,10 +465,55 @@ void main() { color=vec4(1,0,0,1); }
     auto pipeline=device.createGraphicsPipelineUnique({},vk::GraphicsPipelineCreateInfo{.stageCount=2,.pStages=stages.data(),
         .pVertexInputState=&input,.pInputAssemblyState=&assembly,.pViewportState=&viewport,.pRasterizationState=&raster,
         .pMultisampleState=&samples,.pColorBlendState=&blend,.pDynamicState=&dynamic,.layout=*pipeline_layout,.renderPass=renderpass}).value;
-    for(int test=0;test<4;++test) {
+    // Match CapturePhoto's rotated display-buffer storage and LoadPhoto's
+    // inverse PNG rotation. A coordinate-only fragment stub cannot detect an
+    // upside-down replacement, so this fixture samples actual uploaded pixels.
+    vk::UniqueDeviceMemory source_mem,upload_mem;
+    vk::UniqueImage source_image;vk::UniqueImageView source_view;
+    vk::UniqueBuffer upload;vk::UniqueSampler sampler;
+    if(photo_only) {
+        source_image=device.createImageUnique({.imageType=vk::ImageType::e2D,.format=vk::Format::eR8G8B8A8Unorm,
+            .extent={16,16,1},.mipLevels=1,.arrayLayers=1,.samples=vk::SampleCountFlagBits::e1,
+            .tiling=vk::ImageTiling::eOptimal,.usage=vk::ImageUsageFlagBits::eSampled|vk::ImageUsageFlagBits::eTransferDst});
+        source_mem=allocate(device.getImageMemoryRequirements(*source_image),vk::MemoryPropertyFlagBits::eDeviceLocal);
+        device.bindImageMemory(*source_image,*source_mem,0);
+        source_view=device.createImageViewUnique({.image=*source_image,.viewType=vk::ImageViewType::e2D,
+            .format=vk::Format::eR8G8B8A8Unorm,.subresourceRange={vk::ImageAspectFlagBits::eColor,0,1,0,1}});
+        sampler=device.createSamplerUnique({.magFilter=vk::Filter::eNearest,.minFilter=vk::Filter::eNearest,
+            .addressModeU=vk::SamplerAddressMode::eClampToEdge,.addressModeV=vk::SamplerAddressMode::eClampToEdge,
+            .addressModeW=vk::SamplerAddressMode::eClampToEdge});
+        upload=device.createBufferUnique({.size=1024,.usage=vk::BufferUsageFlagBits::eTransferSrc});
+        upload_mem=allocate(device.getBufferMemoryRequirements(*upload),host);device.bindBufferMemory(*upload,*upload_mem,0);
+        auto* data=static_cast<u8*>(device.mapMemory(*upload_mem,0,1024));
+        for(unsigned y=0;y<16;++y)for(unsigned x=0;x<16;++x) {
+            const unsigned at=(x*16+15-y)*4;
+            data[at]=y*17;data[at+1]=x*17;data[at+2]=255;data[at+3]=255;
+        }
+        device.unmapMemory(*upload_mem);
+        command.reset();command.begin({.flags=vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+        const vk::ImageMemoryBarrier writable{.dstAccessMask=vk::AccessFlagBits::eTransferWrite,
+            .oldLayout=vk::ImageLayout::eUndefined,.newLayout=vk::ImageLayout::eTransferDstOptimal,
+            .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+            .image=*source_image,.subresourceRange={vk::ImageAspectFlagBits::eColor,0,1,0,1}};
+        command.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,vk::PipelineStageFlagBits::eTransfer,{}, {},{},writable);
+        command.copyBufferToImage(*upload,*source_image,vk::ImageLayout::eTransferDstOptimal,
+            vk::BufferImageCopy{.imageSubresource={vk::ImageAspectFlagBits::eColor,0,0,1},.imageExtent={16,16,1}});
+        auto readable=writable;readable.srcAccessMask=vk::AccessFlagBits::eTransferWrite;
+        readable.dstAccessMask=vk::AccessFlagBits::eShaderRead;readable.oldLayout=vk::ImageLayout::eTransferDstOptimal;
+        readable.newLayout=vk::ImageLayout::eShaderReadOnlyOptimal;
+        command.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,vk::PipelineStageFlagBits::eFragmentShader,{}, {},{},readable);
+        command.end();queue.submit(vk::SubmitInfo{.commandBufferCount=1,.pCommandBuffers=&command});queue.waitIdle();
+        const vk::DescriptorImageInfo texture{*sampler,*source_view,vk::ImageLayout::eShaderReadOnlyOptimal};
+        device.updateDescriptorSets(vk::WriteDescriptorSet{.dstSet=set,.dstBinding=0,.descriptorCount=1,
+            .descriptorType=vk::DescriptorType::eCombinedImageSampler,.pImageInfo=&texture},{});
+    }
+    for(int test=0;test<(photo_only?2:4);++test) {
         MM3D::Atlas::Uniforms mask;
-        if(test!=3) MM3D::Atlas::Add(mask,{.125f,.125f,.375f,.375f});
-        mask.info[1]=test==1;
+        if(photo_only)mask.pause[0]=MM3D::PhotoCapture::TextureBinding;
+        else {
+            if(test!=3) MM3D::Atlas::Add(mask,{.125f,.125f,.375f,.375f});
+            mask.info[1]=test==1;
+        }
         auto* bytes=static_cast<unsigned char*>(device.mapMemory(*uniform_mem,0,info.range));
         std::memset(bytes,0,sizeof(FSUniformData));std::memcpy(bytes+sizeof(FSUniformData),&mask,sizeof(mask));
         device.unmapMemory(*uniform_mem);
@@ -468,11 +538,64 @@ void main() { color=vec4(1,0,0,1); }
         for(int y=0;y<16;++y) for(int x=0;x<16;++x) {
             bool visible=x>=lo && x<hi && y>=lo && y<hi;
             if(test==1) visible=!visible; if(test==3) visible=true;
-            Require(pixels[(y*16+x)*4+3]==(visible?255:0),"atlas mask orientation/isolation/scale/reset");
+            if(photo_only) {
+                const unsigned at=(y*16+x)*4;
+                const int red=y*17;
+                const int green=x*17;
+                Require(std::abs(int(pixels[at])-red)<=1 && std::abs(int(pixels[at+1])-green)<=1 &&
+                        pixels[at+2]==255 && pixels[at+3]==255,
+                        "photo is upright and fills its entire UV rectangle with no padding bars");
+            } else Require(pixels[(y*16+x)*4+3]==(visible?255:0),"atlas mask orientation/isolation/scale/reset");
         }
         device.unmapMemory(*read_mem);
     }
-    std::cout<<"PASS atlas GPU: PICA shader compilation, selected/inverse masks, orientation, 2x scale, reset\n";
+    if(photo_only)std::cout<<"PASS photo shader: real rotated image, upright orientation and complete framing\n";
+    else std::cout<<"PASS atlas GPU: PICA shader compilation, selected/inverse masks, orientation, 2x scale, reset\n";
+}
+// Exercise the production photo readback with the resolution that crashed and
+// the largest captured/imported photo. Row patterns expose gaps, flipped rows,
+// and overwritten chunks when the shared staging ring wraps.
+static void PhotoReadbackFixture(const Vulkan::Instance& instance, Vulkan::Scheduler& scheduler) {
+    Vulkan::RenderManager manager(instance, scheduler);
+    Vulkan::DescriptorUpdateQueue updates(instance);
+    Vulkan::TextureRuntime runtime(instance, scheduler, manager, updates, 3);
+    scheduler.RegisterOnSubmit([&] { manager.EndRendering(); });
+    scheduler.RegisterOnDispatch([&] { updates.Flush(); });
+    const auto pixel=[](u32 x,u32 y,unsigned c) -> u8 {
+        return c==0 ? u8(x) : c==1 ? u8(y) : c==2 ? u8((x>>8)^(y>>8)) : 255;
+    };
+    for(const auto [width,height]:std::array<std::pair<u32,u32>,4>{
+            {{1440,2400},{1680,2800},{3840,6400},{3840,6827}}}) {
+        VideoCore::SurfaceParams params;
+        params.width=params.stride=width;params.height=height;params.res_scale=1;
+        params.pixel_format=VideoCore::PixelFormat::RGBA8;params.is_tiled=false;params.UpdateParams();
+        Vulkan::Surface image(runtime,params);
+        const auto staging=runtime.FindStaging(width*height*4,true);
+        for(u32 y=0;y<height;++y)for(u32 x=0;x<width;++x)for(unsigned c=0;c<4;++c)
+            staging.mapped[(std::size_t(y)*width+x)*4+c]=pixel(x,y,c);
+        image.Upload({.buffer_offset=staging.offset,.buffer_size=staging.size,
+            .texture_rect={0,height,width,0},.texture_level=0},staging);
+        const auto check=[&](Common::Rectangle<u32> rect) {
+            const auto result=Vulkan::PhotoTransfer::Read(runtime,image,rect);
+            Require(result.size()==std::size_t(rect.GetWidth())*rect.GetHeight()*4,"photo readback has full extent");
+            for(u32 y=0;y<rect.GetHeight();++y)for(u32 x=0;x<rect.GetWidth();++x)for(unsigned c=0;c<4;++c)
+                Require(result[(std::size_t(y)*rect.GetWidth()+x)*4+c]==pixel(x+rect.left,y+rect.bottom,c),
+                        "photo readback preserves all pixels across staging wrap and partial rows");
+        };
+        check({0,height,width,0});
+        check({13,height-11,width-17,19});
+        for(const auto point:MM3D::PauseCapture::ProbePoints) {
+            check({point[1]*width/240,(point[0]+1)*height/400,
+                   (point[1]+1)*width/240,point[0]*height/400});
+        }
+        Require(Vulkan::PhotoTransfer::Read(runtime,image,{0,0,0,0}).empty(),"empty photo patch rejected");
+        Require(Vulkan::PhotoTransfer::Read(runtime,image,{0,height+1,width,0}).empty(),"photo bounds checked");
+        runtime.Finish();
+        std::cout<<"PASS photo readback: "<<width<<"x"<<height<<", complete image and orientation patches\n";
+    }
+    scheduler.Finish();scheduler.WaitWorker();
+    scheduler.RegisterOnSubmit([] {});
+    scheduler.RegisterOnDispatch([] {});
 }
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
@@ -492,8 +615,20 @@ int main(int argc, char** argv) {
         Vulkan::Scheduler scheduler(instance);
         scheduler.RegisterOnSubmit([] {});
         scheduler.RegisterOnDispatch([] {});
+        if (argc > 1 && std::string_view(argv[1]) == "--gpu-interpolation") {
+            MM3D::RunGpuInterpolationFixture(instance, scheduler);
+            return 0;
+        }
+        if (argc > 1 && std::string_view(argv[1]) == "--photo-readback") {
+            PhotoReadbackFixture(instance, scheduler);
+            return 0;
+        }
         if (argc > 1 && std::string_view(argv[1]) == "--skipped-frames") {
             SkippedFrameFixture(instance, scheduler);
+            return 0;
+        }
+        if (argc > 1 && std::string_view(argv[1]) == "--scene-effects") {
+            MM3D::RunSceneEffectsFixture(instance, scheduler);
             return 0;
         }
         if (argc > 1 && std::string_view(argv[1]) == "--pass-switching") {
@@ -666,6 +801,9 @@ void main() { color=vec4(pc.params.y,0,pc.params.z,1); }
         const vk::AttachmentReference reference{0, vk::ImageLayout::eGeneral};
         const vk::SubpassDescription subpass{{}, vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &reference};
         auto renderpass = device.createRenderPassUnique({.attachmentCount = 1, .pAttachments = &attachment, .subpassCount = 1, .pSubpasses = &subpass});
+        if(argc>1 && std::string_view(argv[1])=="--photo-sampling") {
+            AtlasFixture(device,queue,command,*renderpass,allocate,false,true);return 0;
+        }
         if(argc>1 && std::string_view(argv[1])=="--atlas-only") {
             AtlasFixture(device,queue,command,*renderpass,allocate);return 0;
         }

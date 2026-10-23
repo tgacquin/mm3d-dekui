@@ -1,14 +1,82 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
-### Changed
+### Added
 
-- Expanded interpolation coverage for actor attachments, held items, particles, water effects, textboxes, inventory screens, file select, map zoom, and HUD animations. Coverage remains incomplete; some effects still animate at 30fps.
-- Select Item retains its native timing with interpolated opening and closing animations.
-- Added independent Select Mask controls, smoother panel shadows, and corrected notebook scrollbars and portrait flashes.
-- Added a cutscene FOV slider and a cheats-only window. Corrected file-select panel layering.
-- Updated fullscreen fade overrides and the Select Mask release layout.
+- **ZL and ZR for item slots I and II**
+  - Enable **Use stick-click controls** under Controls.
+  - **Right-stick click:** enter first-person view or use the Pictograph Box.
+  - **Left-stick click:** toggle the minimap.
+  - **ZL:** equip and use Item I.
+  - **ZR:** equip and use Item II.
+
+- **Fan translation support**
+  - Import a compatible translation pack under **Controls → Fan translation**.
+  - Made primarily to allow for the Portuguese translation.
+
+- **Widescreen + HD Pictograph photos**
+  - Pictograph photos are now taken in widescreen and at the resolution of the window.
+
+### Improved
+
+- &nbsp;&nbsp;&nbsp;&nbsp;**Numerous 60 FPS interpolation improvements**
+  - Expanded coverage for previously missed actor parts, moving objects, water, and particle effects.
+  - Brought additional CPU particle-interpolation coverage to GPU mode.
+  - Improved recovery from interpolation interruptions when entering water.
+
+  <details>
+
+  <summary><b>&nbsp;Detailed interpolation improvements</b></summary>
+
+  > &nbsp;&nbsp;&nbsp;&nbsp;**Actors, Bosses & Objects**
+  >
+  > - Horseback bowstring motion, including firing, and Bunny Hood ears.
+  > - Burrowed Deku Link's protruding head.
+  > - Additional sliding doors in Spider House, Ikana, Pirate Fortress, and Great Bay Temple.
+  > - Marine Research Lab fish and Bombchus.
+  > - Freezard shrinking during defeat and Snowhead's rising pillar ice sections.
+  > - Great Bay Temple's spinning machinery.
+  > - Wart's body, eye, and bubbles.
+  > - Gekko's small green jelly bubbles and combined jelly.
+  > - Deku Princess's eyes following her head and Koume's target.
+  > - Cow tails and the ghost balloon.
+  > - Eyegore's previously missed meshes.
+  > - Giant Link's hands when holding a boulder.
+  > - Red and blue Twinmold during punching and swinging.
+
+  > &nbsp;&nbsp;&nbsp;&nbsp;**Particles & Environmental Effects**
+  >
+  > - More waterfall effects in Great Bay and Zora Hall.
+  > - Swimming Zora bubbles and popped-bubble particles.
+  > - Mirror-shield reflected light and its animated glow.
+  > - Stone Tower's fire rings and updrafts.
+  > - Garo Master's sword flames.
+
+  > &nbsp;&nbsp;&nbsp;&nbsp;**GPU Interpolation**
+  >
+  > - Expanded coverage for bubbles, ice particles, sparks, sword trails, shockwaves, and Garo sword flames.
+  > - Added missing handling for fireworks, chest particles, fire impacts, droplets, ripples, and splashes.
+  > - Expanded coverage for snow, forest particles, leaves, debris, moths, and torch animation.
+
+  </details>
+
+- **Audio modes**
+  - Replaced the previous choices with **Balanced** and **Accurate HLE**.
+  - **Balanced** corrects only incorect emulator sounds while maintaining the crispness of standard HLE audio.
+  - **Accurate HLE** applies the broader audio-accuracy behavior, can sound more muffled.
+
+
+### Fixed
+
+- Fixed annoying switches to 30fps when underwater which were especially prevalent in the Great Bay Temple
+- Fixed a softlock when striking an owl statue with a Deku Stick while strike activation is enabled.
+- Fixed black screen on start up caused by a presentation deadlock when interpolation was on.
+- Fixed a GPU-specific interpolation rejection during the day-closing transition.
+- Fixed the Gear Pictograph retaining its old centered position after an update.
+- Fixed the Moon mask-selection description box retaining its old centered position after an update.
+
+## 1.0.0
 
 ### Added
 
@@ -16,9 +84,11 @@
 
 - Optional “Dying moves time forward 6 hours” difficulty setting, disabled by default. Continuing after death advances the clock and updates the day when crossing dawn; reaching or passing the final dawn triggers the world ending. Fairy revivals, pit falls and deaths on the Moon are unaffected.
 
-### Fixed
+### Changed
 
-- Advancing time after death only plays the dawn or dusk sound when crossing the corresponding boundary.
+- Expanded interpolation coverage for actor attachments, held items, particles, water effects, textboxes, inventory screens, file select, map zoom, and HUD animations. Coverage remains incomplete; some effects still animate at 30fps.
+- Select Item retains its native timing with interpolated opening and closing animations.
+- Improved notebook scrollbars and overlays, mask selection layout, and dawn/dusk sounds when advancing time after death.
 
 ## 1.0.0-beta.2
 

@@ -13,7 +13,8 @@ A custom fork of Azahar is used as the backing engine.
 - Full Bomber's Notebook functionality on one screen
 - Song menu, song of double time, and give item menus accessible on one screen
 - File select and options on one screen
-- On-screen minimap (hold ZR and press SELECT to hide or show it)
+- On-screen minimap (hold ZR and press SELECT, or click the left stick with optional stick-click controls enabled)
+- Optional stick-click controls: ZL/ZR equip and use Items I/II, and right-stick click opens first-person view or the Pictograph Box
 - Project Restoration features (https://restoration.zora.re/)
 - New toggleable restoration features (classic saving, classic owl statue behavior, classic Song of Double Time, stop Bombers from running up to you)
   - Classic Saving allows saving at owl statues, but not feather statues. Saving returns to the title screen only when a save from a Song of Time reset already exists.
@@ -25,9 +26,11 @@ A custom fork of Azahar is used as the backing engine.
 - References in text to the bottom screen and other 3DS specific features have been replaced with any new controls for a more console-like experience
 - Correct rupee sounds for HLE audio (for the first time through a 3DS emulator!)
 - Pause menu background image adapts to resolution (3DS/emulators default to 240p)
+- Widescreen HD Pictograph photos, with a native-photo fallback under Graphics
 - Correct bloom lighting at higher resolutions
 - Custom texture support
 - French and Spanish support with translations for custom button prompts and new dialogue
+- Optional import of USA-compatible fan translations, tested with the Portuguese pack
 - Many other minor changes in camera and HUD elements
 
 ## Screenshots
@@ -55,13 +58,6 @@ A custom fork of Azahar is used as the backing engine.
   </tr>
 </table>
 
-## Planned features
-
-- Android support
-- Graphical enhancements (depth of field, ambient occlusion)
-- Further improvements to 60fps interpolation (the aim is perfection)
-- Further UI polishing/redesign and bug fixing
-
 ## Getting started
 
 1. Download the latest release corresponding to your platform
@@ -69,6 +65,8 @@ A custom fork of Azahar is used as the backing engine.
 3. Run the app. First launch silently checks the game and prepares its files automatically.
 
 **Press F1 to open settings and adjust camera zoom, HUD layout, controls, audio, graphics, and difficulty.**
+
+See [Installation and settings](INSTALL.md#settings) for optional stick-click controls, audio modes, fan translations, and custom textures. If taking or viewing photos causes problems, disable **Graphics → HD Pictograph photos (restart required)** and restart. Existing HD files are kept.
 
 
 ## Updating
@@ -78,7 +76,7 @@ A custom fork of Azahar is used as the backing engine.
 3. Copy your existing `user` folder and game file beside the new application.
 4. Launch the new version.
 
-Saves, HUD settings, graphics preferences, custom textures, and unrelated mods are preserved. On first launch, recognized older menu layouts update automatically with backups; customized layouts are kept.
+Saves, custom HUD settings, graphics preferences, custom textures, and unrelated mods are preserved. Recognized older menu layouts and stock magic-bar height/minimap opacity values update automatically with backups; custom values are kept. Existing audio preferences migrate to **Balanced** once; selecting **Accurate HLE** afterward is remembered.
 
 If the upgrade fails or is interrupted, the game will not open; relaunch to retry. Resource backups are retained under `user/setup/resource-upgrade-backup-*` after success, or `user/setup/resource-upgrade-pending/backup` while an upgrade is pending. Do not delete your `user` folder or these backups to troubleshoot.
 
@@ -94,6 +92,6 @@ Include your version, operating system, and steps to reproduce the issue.
 AI was used extensively for the purpose of identifying each element the game renders and allowing repositioning, scaling, and transforming of them from the bottom screen to the top screen. This project otherwise would not have been feasible for me to do as the game is not yet decompiled and changes have to be done at the assembly level. However, all repositioning/scaling of the elements for a clean interface was done by me and required a lot of forethought in terms of
 how the layouts should look. For those unwilling to try this project because of this, please play the recompilation which is also an excellent way to enjoy this game.
 
-This project is currently in beta and likely has many bugs I've yet to see so make sure you save frequently!
+See [Known issues](KNOWN_ISSUES.md) for remaining limitations.
 
 Thank you to leoetlino for his work on Project Restoration!

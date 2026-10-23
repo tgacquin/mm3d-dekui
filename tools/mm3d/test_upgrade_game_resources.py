@@ -270,6 +270,37 @@ class ResourceUpgradeTests(unittest.TestCase):
         with self.builders():self.run_upgrade()
         self.assertEqual(before,self.snapshot());self.assert_kept()
 
+    def test_version_one_install_upgrades_photo_without_rebuilding_resources(self):
+        # The photo defaults changed after layout version 1 had already shipped.
+        with self.builders() as (_, extract):
+            self.run_upgrade()
+            extract.reset_mock()
+            ready = json.loads((self.user/upgrade.READY).read_bytes())
+            ready['layout_version'] = 1
+            self.put(upgrade.READY, json.dumps(ready).encode())
+            original = json.loads((self.user/upgrade.layout_migration.CONFIG).read_bytes())
+            original.update(gear_6_x=0, gear_6_y=0, gear_6_scale=1)
+            raw = json.dumps(original).encode()
+            self.put(upgrade.layout_migration.CONFIG, raw)
+            self.run_upgrade()
+            actual = json.loads((self.user/upgrade.layout_migration.CONFIG).read_bytes())
+            defaults = json.loads((setup_game_folder.RESOURCES/'defaults/presentation.json').read_text())
+            expected = dict(original)
+            for key in ('gear_6_x', 'gear_6_y', 'gear_6_scale'):
+                expected[key] = defaults[key]
+            self.assertEqual(actual, expected)
+            self.assertEqual(extract.call_count, 0)
+            self.assertEqual(json.loads((self.user/upgrade.READY).read_bytes())['layout_version'],
+                             upgrade.layout_migration.VERSION)
+            backups = (self.user/'setup').glob('resource-upgrade-backup-*')
+            self.assertTrue(any((p/'backup'/upgrade.layout_migration.CONFIG).read_bytes() == raw
+                                for p in backups if (p/'backup'/upgrade.layout_migration.CONFIG).exists()))
+            before = self.snapshot()
+            self.run_upgrade()
+            self.assertEqual(before, self.snapshot())
+        self.keep.pop(upgrade.layout_migration.CONFIG)
+        self.assert_kept()
+
     def test_stock_profiles_retired_custom_profiles_preserved(self):
         policy=upgrade.layout_migration.policy(setup_game_folder.RESOURCES)
         stock='config/mm3d-local/hud/hearts.json';custom='config/mm3d-local/hud/loading.json'
@@ -280,6 +311,47 @@ class ResourceUpgradeTests(unittest.TestCase):
         self.assertEqual((self.user/custom).read_bytes(),b'custom enabled profile')
         backup,=(self.user/'setup').glob('resource-upgrade-backup-*')
         self.assertEqual((backup/'backup'/stock).read_bytes(),raw)
+        self.assert_kept()
+
+    def test_existing_layout_revisions_upgrade_mask_and_hud_with_backup(self):
+        defaults = json.loads((setup_game_folder.RESOURCES/'defaults/presentation.json').read_text())
+        policy = upgrade.layout_migration.policy(setup_game_folder.RESOURCES)
+        with self.builders() as (_, extract):
+            self.run_upgrade()
+            for revision in (1, 2):
+                with self.subTest(revision=revision):
+                    ready = json.loads((self.user/upgrade.READY).read_bytes())
+                    ready['layout_version'] = revision
+                    self.put(upgrade.READY, json.dumps(ready).encode())
+                    original = dict(defaults, gear_6_x=0, gear_6_y=0, gear_6_scale=1,
+                                    mask_present_6_x=0,
+                                    mask_present_6_y=policy['previous']['dialogue_y'],
+                                    mask_present_6_scale=policy['previous']['dialogue_scale'],
+                                    magic_bar_height=policy['previous']['magic_bar_height'],
+                                    minimap_opacity=policy['previous']['minimap_opacity'],
+                                    mask_present_1_x=123, damage_multiplier=4,
+                                    stick_click_controls=True, song_list_x=72.5)
+                    raw = json.dumps(original).encode()
+                    self.put(upgrade.layout_migration.CONFIG, raw)
+                    extract.reset_mock()
+                    self.run_upgrade()
+                    actual = json.loads((self.user/upgrade.layout_migration.CONFIG).read_bytes())
+                    expected = dict(original)
+                    for key in ('gear_6_x', 'gear_6_y', 'gear_6_scale', 'mask_present_6_x',
+                                'mask_present_6_y', 'mask_present_6_scale',
+                                'magic_bar_height', 'minimap_opacity'):
+                        expected[key] = defaults[key]
+                    self.assertEqual(actual, expected)
+                    self.assertEqual(extract.call_count, 0)
+                    self.assertEqual(json.loads((self.user/upgrade.READY).read_bytes())['layout_version'],
+                                     upgrade.layout_migration.VERSION)
+                    backups = (self.user/'setup').glob('resource-upgrade-backup-*')
+                    self.assertTrue(any((p/'backup'/upgrade.layout_migration.CONFIG).read_bytes() == raw
+                                        for p in backups if (p/'backup'/upgrade.layout_migration.CONFIG).exists()))
+                    before = self.snapshot()
+                    self.run_upgrade()
+                    self.assertEqual(before, self.snapshot())
+        self.keep.pop(upgrade.layout_migration.CONFIG)
         self.assert_kept()
 
     def test_bad_config_or_future_migration_changes_nothing(self):

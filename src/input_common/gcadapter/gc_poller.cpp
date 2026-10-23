@@ -31,6 +31,9 @@ constexpr std::array<GCAdapter::PadButton, Settings::NativeButton::NumButtons> g
     GCAdapter::PadButton::Undefined,
     GCAdapter::PadButton::Undefined,
     GCAdapter::PadButton::Undefined,
+    GCAdapter::PadButton::Undefined, // Power
+    GCAdapter::PadButton::Undefined, // Left stick click (unsupported)
+    GCAdapter::PadButton::Undefined, // Right stick click (unsupported)
 }};
 }
 class GCButton final : public Input::ButtonDevice {

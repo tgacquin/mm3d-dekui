@@ -3,7 +3,7 @@
 import argparse
 import json
 from pathlib import Path
-from single_screen_text import compile_messages, header, decode
+from single_screen_text import compile_messages, header, decode, stick_rows, variant_header
 ROOT = Path(__file__).resolve().parents[2]
 
 def build(source):
@@ -15,7 +15,8 @@ def build(source):
                                       ('spanish', 'uss', 'SpanishReplacements')]:
         spec = json.loads((ROOT/f'resources/mm3d/text/single-screen-{language}.json').read_text())
         rows = compile_messages((source/f'{archive}.gmsg').read_bytes(), spec)
-        for mid, _, _, data, tokens, _ in rows:
+        modern = stick_rows((source/f'{archive}.gmsg').read_bytes(), spec)
+        for mid, _, _, data, tokens, _ in rows + modern:
             assert decode(data) == tokens
             lines = 1
             for t in tokens:
@@ -27,6 +28,7 @@ def build(source):
         start = generated.index('inline constexpr')
         sections += ['namespace MM3D::SingleScreenText {',
                      generated[start:].replace(' Replacements', ' '+array)]
+        sections += [variant_header(modern, 'Stick'+array)]
         results[language] = rows
     return '\n'.join(sections), results
 

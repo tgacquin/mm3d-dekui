@@ -29,6 +29,14 @@ inline constexpr std::array<U32,26> Hashes{
 struct Pose { std::uint64_t frame{}; U32 instance{}, output{}; std::vector<Matrix> bones=std::vector<Matrix>(26); };
 struct Draw { std::uint64_t frame{}; U32 vertices{},vertex_base{},index_offset{};
     std::array<Matrix,10> palette{}; };
+// Renderer results paired with native Draw samples. This distinguishes a valid
+// offline skeleton midpoint from a midpoint actually submitted during gameplay.
+struct Replay {
+    std::uint64_t frame{};
+    U32 vertices{},vertex_base{},index_offset{},gates{},flags{},overrides{},changed{},poses{};
+    float uniform_delta{};
+    Matrix camera{};
+};
 inline std::mutex mutex;
 inline std::atomic<bool> active{false}, interpolate{false}, interpolate_actors{false};
 inline std::atomic<unsigned> interpolation_generation{0}, replaced_draws{0}, replaced_bones{0};
@@ -52,12 +60,13 @@ inline std::atomic<unsigned> pose_count{},draw_count{};
 inline std::vector<Pose> poses;
 inline std::vector<LivePose> actor_poses;
 inline std::vector<Draw> draws;
+inline std::vector<Replay> replays;
 inline bool truncated{};
 inline auto Now() { return std::chrono::duration_cast<std::chrono::milliseconds>(
     std::chrono::steady_clock::now().time_since_epoch()).count(); }
 inline bool Recording() { if(!active.load())return false;const auto now=Now();return now>=begins && now<ends; }
 inline void Start() {
-    std::scoped_lock lock{mutex};active=false;poses.clear();actor_poses.clear();draws.clear();truncated=false;
+    std::scoped_lock lock{mutex};active=false;poses.clear();actor_poses.clear();draws.clear();replays.clear();truncated=false;
     pose_count=0;draw_count=0;begins=Now()+3000;ends=begins.load()+10000;active=true;
 }
 inline void Poll() { if(active && Now()>=ends)active=false; }
@@ -159,4 +168,11 @@ inline void Observe(Draw draw) {
     else truncated=true;
 }
 bool Export(const std::string& path);
+inline void ObserveReplay(const Replay& replay) {
+    if (!Recording() || replay.frame%10>=3) return;
+    const std::scoped_lock lock{mutex};
+    if (!active) return;
+    if (replays.size()<8192) replays.push_back(replay);
+    else truncated=true;
+}
 }

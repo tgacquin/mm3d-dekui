@@ -40,7 +40,8 @@ class LayoutMigrationTests(unittest.TestCase):
         self.assertEqual(new['file_select_0_y'],self.policy['current']['file_select_0_y'])
 
     def test_current_customizations_not_reset(self):
-        old=dict(self.policy['current'],song_panel_left_x=-50,file_select_1_x=123,item_present_1_x=77,gear_6_x=42)
+        old=dict(self.policy['current'],song_panel_left_x=-50,file_select_1_x=123,item_present_1_x=77,gear_6_x=42,
+                 mask_present_1_x=123,mask_present_6_x=42,magic_bar_height=.54,minimap_opacity=.54)
         new,held=self.apply(old);self.assertEqual(new,old)
         self.assertEqual(set(held),set(migration.GROUPS))
 
@@ -86,7 +87,8 @@ class LayoutMigrationTests(unittest.TestCase):
         new, _ = self.apply(old)
         for key in ('damage_multiplier', 'actor_draw_distance', 'mask_present_1_x', 'mask_present_help_scale'):
             self.assertEqual(new[key], old[key])
-        self.assertEqual(new['mask_present_3_x'], self.policy['current']['mask_present_3_x'])
+        self.assertNotIn('mask_present_3_x', new)  # Keep customized mask layout together.
+        self.assertEqual(new['mask_present_6_x'], self.policy['current']['mask_present_6_x'])
         self.assertEqual(self.policy['current']['damage_multiplier'], 1)
         self.assertEqual(self.policy['current']['actor_draw_distance'], 1)
 
@@ -100,6 +102,61 @@ class LayoutMigrationTests(unittest.TestCase):
         new, held = self.apply(old)
         self.assertEqual(new, old)
         self.assertIn('gear_photo', held)
+
+    def test_optional_stick_controls_preserve_existing_preference(self):
+        old=dict(self.policy['previous'])
+        new,_=self.apply(old)
+        self.assertFalse(new['stick_click_controls'])
+        old['stick_click_controls']=True
+        new,_=self.apply(old)
+        self.assertTrue(new['stick_click_controls'])
+
+    def test_serialized_centered_mask_description_upgrades(self):
+        for source in (self.policy['previous'], self.policy['current'], {}):
+            old = dict(self.policy['current'], mask_present_6_x=0,
+                       mask_present_6_y=source.get('dialogue_y', 0),
+                       mask_present_6_scale=source.get('dialogue_scale', 1))
+            new, _ = self.apply(old)
+            for key in ('mask_present_6_x', 'mask_present_6_y', 'mask_present_6_scale'):
+                self.assertEqual(new[key], self.policy['current'][key], key)
+
+    def test_serialized_inherited_mask_panel_upgrades(self):
+        for source in (self.policy['previous'], self.policy['current']):
+            old = dict(self.policy['current'])
+            for key in old:
+                if key.startswith(('mask_present_1_', 'mask_present_3_', 'mask_present_help_')):
+                    old[key] = source[key.replace('mask_present_', 'item_present_')]
+            new, _ = self.apply(old)
+            self.assertEqual(new, self.policy['current'])
+
+    def test_custom_mask_panel_does_not_block_stock_description_upgrade(self):
+        old = dict(self.policy['current'], mask_present_1_x=123,
+                   mask_present_6_x=0, mask_present_6_y=self.policy['previous']['dialogue_y'],
+                   mask_present_6_scale=self.policy['previous']['dialogue_scale'])
+        new, held = self.apply(old)
+        self.assertEqual(new['mask_present_1_x'], 123)
+        self.assertEqual(new['mask_present_6_x'], self.policy['current']['mask_present_6_x'])
+        self.assertIn('mask_selection', held)
+        custom = dict(old, mask_present_6_x=42)
+        new, held = self.apply(custom)
+        self.assertEqual(new, custom)
+        self.assertIn('mask_description', held)
+
+    def test_old_hud_defaults_upgrade_but_custom_values_stay(self):
+        for key in ('magic_bar_height', 'minimap_opacity'):
+            old = dict(self.policy['current'])
+            old[key] = self.policy['previous'][key]
+            new, _ = self.apply(old)
+            self.assertEqual(new[key], self.policy['current'][key], key)
+            old[key] = .54321
+            new, _ = self.apply(old)
+            self.assertEqual(new, old)
+
+    def test_hd_photo_fallback_preference_survives_upgrade(self):
+        new, _ = self.apply(dict(self.policy['previous']))
+        self.assertTrue(new['hd_pictograph_photos'])
+        new, _ = self.apply(dict(self.policy['previous'], hd_pictograph_photos=False))
+        self.assertFalse(new['hd_pictograph_photos'])
 
     def test_retired_profiles_are_explicitly_allowlisted(self):
         from upgrade_game_resources import RETIRED

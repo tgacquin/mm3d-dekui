@@ -20,6 +20,7 @@
 #include "mm3d/camera_midpoint.h"
 #include "mm3d/cpu_interpolation.h"
 #include "mm3d/cpu_interpolation_capture.h"
+#include "mm3d/gpu_interpolation_inputs.h"
 #include "mm3d/link_pose_capture.h"
 #endif
 
@@ -1094,8 +1095,9 @@ void PicaCore::DrawImmediate() {
 void PicaCore::DrawArrays(bool is_indexed) {
     MICROPROFILE_SCOPE(GPU_Drawing);
 #ifdef ENABLE_MM3D_PRESENTATION
-    const bool cpu_interpolation = MM3D::CpuInterpolation::Enabled() &&
-                                   MM3D::CameraMidpoint::enabled.load();
+    const bool cpu_interpolation = MM3D::CameraMidpoint::enabled.load() &&
+        (MM3D::CpuInterpolation::Enabled() ||
+         MM3D::GpuInterpolation::NeedsShadedVertices(regs.internal, vs_setup));
     cpu_vertex_replay.Begin(0, primitive_assembler.GetTopology());
 #endif
 
@@ -1104,7 +1106,7 @@ void PicaCore::DrawArrays(bool is_indexed) {
         debug_context->OnEvent(DebugContext::Event::IncomingPrimitiveBatch, nullptr);
     }
 
-    const bool accelerate_draw = [this] {
+    const bool accelerate_draw = [&, this] {
         // Geometry shaders cannot be accelerated due to register preservation.
         if (regs.internal.pipeline.use_gs == PipelineRegs::UseGS::Yes) {
             return false;
@@ -1119,7 +1121,7 @@ void PicaCore::DrawArrays(bool is_indexed) {
 
         bool accelerate_draw = Settings::values.use_hw_shader && primitive_assembler.IsEmpty();
 #ifdef ENABLE_MM3D_PRESENTATION
-        if (MM3D::CpuInterpolation::Enabled() && MM3D::CameraMidpoint::enabled.load())
+        if (cpu_interpolation)
             accelerate_draw = false;
 #endif
         const auto topology = primitive_assembler.GetTopology();

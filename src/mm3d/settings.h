@@ -1,6 +1,8 @@
 // Copyright 2026 MM3D presentation contributors
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include "mm3d/depth_of_field.h"
+#include "mm3d/ambient_occlusion.h"
 #include "mm3d/ocarina_prompt.h"
 #include "mm3d/file_select_prompt.h"
 #include "mm3d/magic_border.h"
@@ -59,13 +61,17 @@ struct Settings {
     bool fast_time = false;
     bool double_prices = false;
     int price_multiplier = 2;
-    bool accurate_hle_audio = true;
+    int hle_audio_accuracy = 1; // 1: Balanced, 2: Accurate HLE. All pre-migration preferences become 1.
     bool mute_music = false;
     bool disable_low_health_beep = false;
     bool disable_tatl_reminders = false;
     bool single_screen_text = true;
+    bool stick_click_controls = false;
     bool fix_bloom = true;
     bool disable_fog = false;
+    bool hd_pictograph_photos = true;
+    DepthOfField::Options depth_of_field;
+    AmbientOcclusion::Options ambient_occlusion;
     bool interpolation_60fps = true;
     bool interpolation_cpu_vertices = true;
     bool classic_saving = false;

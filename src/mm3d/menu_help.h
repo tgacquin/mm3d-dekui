@@ -3,9 +3,13 @@
 #include "mm3d/items_map_prompt.h"
 #include "mm3d/hud_adjustments.h"
 #include "mm3d/native_item_present.h"
+#include "mm3d/stick_controls.h"
 namespace MM3D::MenuHelp {
 using namespace NativeInventory;
 inline constexpr std::array<const char*,5> Labels{"Change tab","Choose","Return","Equip to I","Equip to II"};
+inline std::string EquipLabel(unsigned language,bool second) {
+    return std::string(second?"ZR - ":"ZL - ")+std::string(PromptText::Translate(language,second?Labels[4]:Labels[3]));
+}
 struct Options {
     bool enabled=true;
     ButtonPose pose{280,148,.8f};
@@ -47,7 +51,9 @@ struct Hook {
            std::find(inventory.routed.begin(),inventory.routed.end(),layout)==inventory.routed.end())return content;
         }
         auto& prompt=source.prompt;prompt.icon=prompt.text=0;prompt.texture=prompt.Parts(m);
+        const bool clicks=StickControls::enabled.load();
         std::string alphabet=present?"ChooseCancel":"Change tabChooseReturnEquip to IIZR +/";
+        if(!present&&clicks)alphabet+="L-";
         for(const auto label:Labels)alphabet+=PromptText::Get(m,label);
         alphabet+=PromptText::Get(m,"Cancel");
         source.Templates(m,inventory,layout,alphabet);
@@ -79,11 +85,15 @@ struct Hook {
                 if(height<=0||!std::isfinite(height))return false;
                 text_width+=width*12*ts/height;return true;
             };
-            for(auto label:Labels)if(!measure(label))return content;
-            if(!measure("/")||!measure("ZR +")||!measure("ZR +"))return content;
+            for(unsigned i=0;i<3;++i)if(!measure(Labels[i]))return content;
+            if(!measure("/"))return content;
+            if(clicks) {
+                if(!measure(EquipLabel(PromptText::Language(m),false))||
+                   !measure(EquipLabel(PromptText::Language(m),true)))return content;
+            } else if(!measure(Labels[3])||!measure(Labels[4])||!measure("ZR +")||!measure("ZR +"))return content;
             const float available=std::max(1.f,(396.f-x)/scale);
-            // Six icons, eight text spans, nine internal gaps, four row gaps.
-            const float fixed=6*16*bs+9*inner;
+            // Direct triggers use two complete text rows instead of modifier + icon.
+            const float fixed=(clicks?4:6)*16*bs+(clicks?5:9)*inner;
             gap=std::min(gap,std::max(0.f,(available-fixed-text_width)/4));
             if(text_width>0)ts*=std::min(1.f,std::max(1.f,available-fixed-4*gap)/text_width);
         }
@@ -129,11 +139,11 @@ struct Hook {
             const auto text=[&](std::string_view label)->bool {
                 std::vector<NotebookFont::Glyph> glyphs;float pen=0,height=0;
                 for(char32_t c:PromptText::Codes(PromptText::Get(m,label))){auto g=NotebookFont::Lookup(m,*font,c,pen);if(!g)return false;glyphs.push_back(*g);pen+=g->advance;height=std::bit_cast<float>(g->words[9]);}
-                if(height<=0||!std::isfinite(height)||glyphs.size()>16)return false;
+                if(height<=0||!std::isfinite(height)||glyphs.size()>24)return false;
                 const float fs=12*ts/height;const U32 at=next;next+=0xb00;if(next>Size)return false;
                 const U32 records=at+0x900;
                 // Glyph records follow the two0x450-byte pane+geometry copies.
-                // Reserve a larger tail for labels up to16 glyphs.
+                // Reserve a larger tail for labels up to24 glyphs.
                 next=std::max(next,records+U32(glyphs.size())*60);next=(next+7)&~7u;if(next>Size)return false;
                 for(unsigned j=0;j<glyphs.size();++j)for(unsigned k=0;k<15;++k)put(records+j*60+k*4,glyphs[j].words[k]);
                 for(unsigned shadow=0;shadow<2;++shadow){const U32 n=at+shadow*0x450,g=n+0x140;
@@ -146,8 +156,12 @@ struct Hook {
             if(present){if(!icon(row==0?112:128))return content;}
             else if(row==0){if(!icon(176)||!text("/")||!icon(192))return content;}
             else if(row<3){if(!icon(row==1?112:128))return content;}
-            else {if(!text("ZR +")||!icon(row==3?144:160))return content;}
-            if(!text(present?(row==0?"Choose":"Cancel"):Labels[row]))return content;
+            else if(!clicks){if(!text("ZR +")||!icon(row==3?144:160))return content;}
+            if(!present&&clicks&&row>=3) {
+                // One span gives exactly one native-font space on each side
+                // of the dash, independent of the icon-to-label gap setting.
+                if(!text(EquipLabel(PromptText::Language(m),row==4)))return content;
+            } else if(!text(present?(row==0?"Choose":"Cancel"):Labels[row]))return content;
             if(across)cursor_x=px+(gap-inner)*s;
             else cursor_y+=(row_height+gap)*s;
         }

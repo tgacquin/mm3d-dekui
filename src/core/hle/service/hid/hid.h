@@ -388,6 +388,9 @@ private:
     std::atomic<bool> is_device_reload_pending{true};
     std::array<std::unique_ptr<Input::ButtonDevice>, Settings::NativeButton::NUM_BUTTONS_HID>
         buttons;
+#ifdef ENABLE_MM3D_PRESENTATION
+    std::array<std::unique_ptr<Input::ButtonDevice>,2> stick_clicks;
+#endif
     std::unique_ptr<Input::AnalogDevice> circle_pad;
     std::unique_ptr<Input::MotionDevice> motion_device;
     std::unique_ptr<Input::TouchDevice> controller_touch_device;

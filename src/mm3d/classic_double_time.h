@@ -7,6 +7,7 @@
 #include <vector>
 #include "mm3d/classic_double_time_text.h"
 #include "mm3d/classic_localized_text.h"
+#include "mm3d/translation.h"
 
 namespace MM3D::ClassicDoubleTime {
 using U32=std::uint32_t;
@@ -61,6 +62,9 @@ inline bool Pointer(U32 at,U32 size=4){return at>=0x100000&&size<=0x1000000&&at<
 // choice layout. Recognize every owned variant so the next Song of Time lookup
 // restores its original question, even after toggling the option off.
 template<class M> bool Text(M& m,U32 self,int question) {
+    if (Translation::Owns(m, self))
+        return question < int(Questions.size()) && Translation::Apply(m, self, 0x1b8a,
+            Translation::Kind::Song, question < 0 ? 0 : unsigned(question + 1));
     if(!Pointer(self,20)||question>=int(Questions.size()))return false;
     auto base=m.Read(self+4),entries=m.Read(self+8),size=m.Read(self+12);
     if(!base||!entries||!size||m.Read(self+16)!=20||!Pointer(*base,*size)||*size<16||

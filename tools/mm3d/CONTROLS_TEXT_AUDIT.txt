@@ -1,0 +1,218 @@
+MM3D controls/text audit — 22 October 2026
+
+Status: optional stick-click layout implemented; default off.
+
+Controls (Controls > Use stick-click controls)
+- ZL: assign/use Item I; ZR: assign/use Item II.
+- Right-stick click: existing contextual first-person/pictograph action.
+- Left-stick click: minimap visibility toggle with the existing camera-zoom cue.
+- Off restores Restoration controls and instructions. Existing X/Y, D-pad,
+  Start/Select and menu navigation keep their mappings.
+- Existing SDL controller profiles gain missing click bindings only. Explicit
+  custom bindings remain unchanged. Keyboard defaults are 3 (left) and 4 (right).
+- Auxiliary host bindings do not change the emulated 3DS HID/IR/NS bit ranges.
+- With the option enabled, HUD I/II exchange physical placements as complete
+  groups (label, item, count and background). Player offsets and all editor
+  presets are looked up through the same reversible mapping. Existing layout
+  files and inventory saves are not rewritten. Off uses the original mapping.
+- User correction: ZL / Item I comes first in the prompt row, ZR / Item II
+  second. Earlier testing used the reverse assignment; this supersedes it.
+
+Language and prompt changes
+- English, French and Spanish each have optional variants for 0043 (camera),
+  026b (item assignment/use), and 1d18 (minimap). Other message IDs retain their
+  existing single-screen wording. The complete legacy inventory follows below.
+- Runtime accepts original, legacy and stick-layout hashes, and can switch
+  in either direction on message open. Disabling single-screen instructions
+  restores original text. No native GMSG assets are modified.
+- Camera/minimap instructions explicitly say to press the right/left stick;
+  the movement-stick glyph is not repurposed to mean a click.
+- Prompts use "ZL - Equip to I" and "ZR - Equip to II" (localized labels),
+  with exactly one native-font space on either side of the dash. Off retains
+  the ZR + X/Y icon prompts. Both vertical/horizontal layouts are supported.
+- HUD/editor help agrees with the selected layout.
+
+Verification
+- Reviewed all 18 authored English edits / 12 message IDs and 20 custom prompt
+  labels. French and Spanish each have 20 authored edits over the same 12 IDs.
+- Scanned all 6,152 original English entries for relevant touchscreen/control
+  instructions. Ordinary narrative uses of touch/tap are left unchanged.
+- Generator checks native allocation capacity, control round trips and message
+  flow. Runtime tests verify whole-file isolation, both layout transitions,
+  single-screen text off/on, idempotence, all three languages, and refusal to
+  overwrite unrecognized/custom text.
+- Prompt fixtures check localized glyph records, exact separators, horizontal
+  bounds and restoration of guest scratch memory.
+- Input fixtures check native fallback, press/hold/release, short clicks,
+  held-input suppression on enable, menu/transition gating, minimap sound and
+  native-code signatures. Controller fixtures cover click bindings/events.
+
+Other existing English changes reviewed for relevance
+- Classic owl save/resume message 0c01: save/quit/resume wording and Yes/No choices; no affected trigger/stick instruction.
+- Classic Double Time 1b8a: five time-destination questions; no affected instruction. 1b94 keeps the existing final-night failure wording.
+- Price text specifications: amount changes, shortened shop prose and one rewrite; no ZL/ZR or stick-click mapping. No changes required for this option.
+- Vanilla item acquisition messages often mention X/Y. Those remain valid with direct extra-item triggers; expanding them to enumerate every slot would be an additional wording change, not required to correct the proposed remap.
+- Notebook, map, file-select and ocarina prompts retain their current labels/actions unless their actual bindings change. Do not apply OOT-specific Start/Select behavior to MM.
+
+English edit inventory (complete)
+01. Message 003e — KEEP for stick clicks. Map navigation/floor selection instructions are a separate control review.
+    Match: 'Tap '; occurrence 0
+    Legacy authored text:
+      Press SELECT to open your inventory.
+      Use {L}/{R} to choose the Map tab.
+
+02. Message 003e — KEEP for stick clicks. Map navigation/floor selection instructions are a separate control review.
+    Match: 'When zoomed in, '; occurrence 0
+    Legacy authored text:
+      Use {Dpad} to move the cursor.
+      Choose a floor from the floor list.
+      Press {B} to return.
+
+03. Message 0043 — CHANGE when enabled: ZL becomes right-stick click; keep A for taking a picture.
+    Match: 'Tap '; occurrence 0
+    Legacy authored text:
+      Press ZL to look through it.
+      Press {A} to snap a picture.
+
+04. Message 0078 — KEEP. Inventory navigation and D-pad Down transformation are not changed by this option.
+    Match: 'Tap '; occurrence 0
+    Legacy authored text:
+      Press SELECT to open your inventory.
+      Use {L}/{R} to choose the Masks tab.
+
+05. Message 0078 — KEEP. Inventory navigation and D-pad Down transformation are not changed by this option.
+    Match: 'Tap the corresponding icon'; occurrence 0
+    Legacy authored text:
+      Press D-pad Down to wear this mask.
+      Press it again to return to normal.
+
+06. Message 00ff — KEEP. A to choose and B to cancel remain.
+    Match: 'Select an item'; occurrence 0
+    Legacy authored text:
+      Select an item and press {A}.
+      Press {B} to cancel.{Color:11}
+
+07. Message 026b — CHANGE assignment AND use instructions when enabled: replace the ZR + X/Y combinations with the agreed direct triggers.
+    Match: 'Tap '; occurrence 0
+    Legacy authored text:
+      Press SELECT to open your inventory.
+      Use {L}/{R} to choose the Items tab.
+
+08. Message 026b — CHANGE assignment AND use instructions when enabled: replace the ZR + X/Y combinations with the agreed direct triggers.
+    Match: 'Select an item using '; occurrence 0
+    Legacy authored text:
+      Use {Stick} to select an item.
+      Press {X} or {Y} to assign it.
+
+09. Message 026b — CHANGE assignment AND use instructions when enabled: replace the ZR + X/Y combinations with the agreed direct triggers.
+    Match: 'You can also '; occurrence 0
+    Legacy authored text:
+      For slots I and II, hold ZR
+      and press {X} or {Y} to assign an item.
+
+10. Message 026b — CHANGE assignment AND use instructions when enabled: replace the ZR + X/Y combinations with the agreed direct triggers.
+    Match: "Once you've assigned an item"; occurrence 0
+    Legacy authored text:
+      Use the same button or button
+      combination to use the item.
+      It's easy!
+
+11. Message 0270 — KEEP. Inventory/Gear navigation is unchanged.
+    Match: 'Tap '; occurrence 0
+    Legacy authored text:
+      Press SELECT to open your inventory.
+      Use {L}/{R} to choose Gear and view
+      what you've collected.
+
+12. Message 033f — KEEP. Notebook START and Event Notes instructions are unchanged.
+    Match: 'In '; occurrence 0
+    Legacy authored text:
+      In {Color:1}Event Notes{Color:11}, choose an event
+      to read its details.
+
+13. Message 0e9b — KEEP. Save acknowledgement contains no affected input.
+    Match: 'Progress saved.'; occurrence 0
+    Legacy authored text:
+      Progress saved.{Color:11}
+
+14. Message 1bae — KEEP. Song of Time loss warning contains no affected input.
+    Match: 'Items highlighted'; occurrence 0
+    Legacy authored text:
+      Carried rupees{Color:11} and some items
+      will be {Color:1}lost{Color:11}.
+
+15. Message 1d18 — CHANGE when enabled: ZR + SELECT becomes left-stick click. Keep inventory/map navigation.
+    Match: 'Tap'; occurrence 0
+    Legacy authored text:
+      You can view the minimap{Color:11} in the
+      bottom right corner. Press ZR +
+      SELECT to toggle it on or off.
+
+16. Message 1d18 — CHANGE when enabled: ZR + SELECT becomes left-stick click. Keep inventory/map navigation.
+    Match: 'Tap '; occurrence 0
+    Legacy authored text:
+      SELECT opens your inventory.
+      {L}/{R}: Map tab.
+
+17. Message 2056 — KEEP. Last-save restart instructions contain no affected input.
+    Match: 'If you would like to restart your'; occurrence 0
+    Legacy authored text:
+      To return to your last save,
+      quit and restart the game,
+      then load your save file.
+
+18. Message 575b — KEEP. Generic name entry contains no affected input.
+    Match: 'Tap to enter a name.'; occurrence 0
+    Legacy authored text:
+      Enter a name.
+
+Custom prompt label inventory (complete)
+Only the Equip to I/II control prefixes/icons change for the optional layout.
+- Change tab | French: Changer d'onglet | Spanish: Cambiar pestaña
+- Select | French: Choisir | Spanish: Elegir
+- Choose | French: Choisir | Spanish: Elegir
+- Return | French: Retour | Spanish: Volver
+- Equip to I | French: Assigner I | Spanish: Asignar a I
+- Equip to II | French: Assigner II | Spanish: Asignar a II
+- Items | French: Inventaire | Spanish: Inventario
+- Map | French: Carte | Spanish: Mapa
+- Zoom In | French: Zoom + | Spanish: Acercar
+- Zoom Out | French: Zoom - | Spanish: Alejar
+- View schedule | French: Voir horaires | Spanish: Ver horarios
+- View events | French: Voir l'historique | Spanish: Ver eventos
+- View map | French: Carte | Spanish: Mapa
+- Set alarm | French: Alarme | Spanish: Alarma
+- Schedule details | French: Détails horaires | Spanish: Detalles horario
+- Event details | French: Détails | Spanish: Detalles suceso
+- Songs | French: Chants | Spanish: Canciones
+- Cancel | French: Annuler | Spanish: Cancelar
+- Back | French: Retour | Spanish: Volver
+- Move cursor | French: Déplacer | Spanish: Mover cursor
+
+Legacy complete-message storage (bytes used / native capacity)
+- 003e: 252 / 308
+- 0043: 240 / 252
+- 0078: 358 / 488
+- 00ff: 78 / 92
+- 026b: 436 / 536
+- 0270: 310 / 312
+- 033f: 676 / 734
+- 0e9b: 36 / 106
+- 1bae: 156 / 162
+- 1d18: 274 / 278
+- 2056: 96 / 130
+- 575b: 16 / 24
+
+Source files
+resources/mm3d/text/single-screen.json
+resources/mm3d/text/single-screen-french.json
+resources/mm3d/text/single-screen-spanish.json
+src/mm3d/single_screen_text.h
+src/mm3d/single_screen_text_data.h (generated)
+src/mm3d/single_screen_localized_data.h (generated)
+src/mm3d/menu_help.h
+src/mm3d/prompt_text.h
+src/mm3d/overlay.cpp
+src/mm3d/minimap_shortcut.h
+src/common/settings.h
+src/input_common/sdl/sdl_impl.cpp

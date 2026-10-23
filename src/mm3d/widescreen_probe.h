@@ -34,6 +34,44 @@ inline bool LocalLayoutPane(std::uint64_t shader,std::uint64_t swizzle,unsigned 
     return x[1]==0 && x[2]==0 && y[1]==0 && y[3]==0 &&
         x[3]>0 && x[3]<400 && y[2]>0 && y[2]<240;
 }
+// UpCollect can draw the frame alone or batch it with the blackboard. Native
+// packing changes the gradient's register index as panes fade in/out. Identify
+// the frame by its geometry and referenced colors, not a fixed register slot.
+template<class ReadRow> bool PhotoFrameBatch(std::uint64_t shader,std::uint64_t swizzle,
+    unsigned vertices,unsigned textures,ReadRow row) {
+    if(shader!=0x9b343fea686d98e0ULL || swizzle!=0xac22b79e29209c01ULL ||
+       (vertices!=6 && vertices!=12) || textures!=0)return false;
+    constexpr std::array<std::array<float,3>,4> colors{{
+        {255,255,255},{214,215,211},{142,147,134},{100,106,87}}}; // BGR
+    bool frame_found=false;
+    for(unsigned pane=0;pane<vertices/6;++pane) {
+        const auto c=row(10+4*pane),x=row(11+4*pane),y=row(12+4*pane);
+        for(const auto& r:{c,x,y})for(float v:r)if(!std::isfinite(v))return false;
+        if((c[0]!=0 && c[0]!=1) || c[1]!=3 || c[2]!=0 ||
+           x[1]!=0 || x[2]!=0 || y[1]!=0 || y[3]!=0 || x[3]<=0 || y[2]<=0)return false;
+        const float index=std::abs(c[3]);
+        if(index<18 || index>95 || index!=std::floor(index))return false;
+        if(c[3]<0) {
+            const auto color=row(unsigned(index));
+            // Only a black backdrop may share the frame's corrected draw.
+            if(!std::isfinite(color[0]) || color[0]<0 || color[0]>1 ||
+               color[1]!=0 || color[2]!=0 || color[3]!=0)return false;
+            continue;
+        }
+        if(frame_found || index>92)return false;
+        const float ratio=x[3]/y[2];
+        if(ratio<207.49f/120.f || ratio>208.01f/120.f)return false;
+        for(unsigned corner=0;corner<4;++corner) {
+            const auto color=row(unsigned(index)+corner);
+            for(float v:color)if(!std::isfinite(v))return false;
+            if(color[0]<0 || color[0]>1)return false;
+            for(unsigned channel=0;channel<3;++channel)
+                if(std::abs(color[channel+1]*255-colors[corner][channel])>.1f)return false;
+        }
+        frame_found=true;
+    }
+    return frame_found;
+}
 // MM3D transition/title overlay, recovered from the user's tested capture.
 // Observe is called only for widescreen top-screen draws without depth writes.
 inline constexpr Draw TransitionOverlay{0x89b1ab98da3d9241ULL,0x6f0b398b1fc186a9ULL,

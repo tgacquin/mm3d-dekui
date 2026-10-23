@@ -9,6 +9,7 @@
 #ifdef ENABLE_MM3D_PRESENTATION
 #include <map>
 #include "mm3d/profiles.h"
+#include "mm3d/mirror_projection_interpolation.h"
 #include "mm3d/atlas_render.h"
 #include "mm3d/camera_midpoint.h"
 #include "mm3d/world_map_interpolation.h"
@@ -26,6 +27,7 @@
 #include "mm3d/sword_trail_interpolation.h"
 #include "mm3d/shockwave_interpolation.h"
 #include "mm3d/bubble_interpolation.h"
+#include "mm3d/ice_particle_interpolation.h"
 #include "mm3d/leaf_particle_interpolation.h"
 #include "mm3d/moth_interpolation.h"
 #include "mm3d/message_interpolation.h"
@@ -36,10 +38,16 @@
 #include "mm3d/magic_meter_interpolation.h"
 #include "mm3d/lens_interpolation.h"
 #include "mm3d/letterbox_interpolation.h"
+#include "mm3d/scene_effects.h"
 #include "mm3d/heart_interpolation.h"
 #include "mm3d/splash_interpolation.h"
 #include "mm3d/song_effect_interpolation.h"
+#include "mm3d/fire_effect_interpolation.h"
+#include "mm3d/garo_flame_interpolation.h"
 #include "mm3d/pause_capture.h"
+#include "mm3d/photo_capture.h"
+#include "mm3d/photo_save_queue.h"
+#include "video_core/renderer_vulkan/vk_photo_transfer.h"
 #include "mm3d/visibility_depth.h"
 #include "video_core/renderer_vulkan/vk_visibility_depth.h"
 #endif
@@ -78,7 +86,7 @@ class RenderManager;
 
 class RasterizerVulkan : public VideoCore::RasterizerAccelerated
 #ifdef ENABLE_MM3D_PRESENTATION
-    , public MM3D::PauseCapture::Backend, public MM3D::VisibilityDepth::Backend
+    , public MM3D::PauseCapture::Backend, public MM3D::PhotoCapture::Backend, public MM3D::VisibilityDepth::Backend
 #endif
 {
 public:
@@ -109,6 +117,11 @@ public:
     void CapturePause(u32 source,unsigned eye) override;
     void BindPause(u32 texture,unsigned eye,const MM3D::PauseCapture::Probes& probes) override;
     void ResetPause() override;
+    void ResetPhoto() override;
+    void CapturePhoto(u32 source,unsigned eye) override;
+    bool BindPhoto(u32 texture,unsigned eye,const MM3D::PhotoCapture::Probes& probes) override;
+    void KeepPhoto(std::span<const u8> native) override;
+    void LoadPhoto(std::span<const u8> native) override;
 #endif
     void LoadDefaultDiskResources(const std::atomic_bool& stop_loading,
                                   const VideoCore::DiskResourceLoadCallback& callback) override;
@@ -138,11 +151,23 @@ private:
     MM3D::Atlas::Uniforms atlas_uniforms{};
     MM3D::CameraMidpoint::History midpoint_history;
     MM3D::WorldMapInterpolation::History world_map_history;
+    std::unique_ptr<MM3D::SceneEffects> depth_of_field;
+    struct DofScene {
+        u64 frame{};
+        PAddr color{},depth{};
+        std::optional<MM3D::DepthOfField::Depth> transform;
+        bool applied{};
+        std::array<float,4> viewport{};
+    } dof_scene;
+
     MM3D::CameraMidpoint::ColorClears midpoint_color_clears;
     // CPU replay uploads into the stream buffer before deferred commands are
     // recorded; those commands never retain pointers into this scratch storage.
     std::vector<HardwareVertex> midpoint_cpu_vertices;
     MM3D::LinkInterpolation::History link_history;
+    MM3D::GaroFlameInterpolation::History garo_flame_history;
+    MM3D::FireEffectInterpolation::History fire_effect_history;
+    std::optional<MM3D::FireEffectInterpolation::Values> fire_effect_overrides;
     MM3D::SongEffectInterpolation::History song_history;
     std::optional<MM3D::SongEffectInterpolation::Values> song_overrides;
     MM3D::LinkInterpolation::Overrides link_overrides{};
@@ -150,6 +175,7 @@ private:
     std::optional<u64> link_frame;
     unsigned link_generation{};
     std::optional<MM3D::CameraMidpoint::Matrix> midpoint_projection;
+    std::optional<std::array<std::array<float,4>,96>> gpu_midpoint_uniforms;
     unsigned midpoint_generation{};
     unsigned midpoint_width{}, midpoint_height{};
     unsigned midpoint_copies{}, midpoint_rejected{}, midpoint_fallback{};
@@ -166,6 +192,8 @@ private:
     bool visibility_depth_refresh_enabled{};
     std::unique_ptr<VisibilityDepthCache> visibility_depth;
     MM3D::WaterModelInterpolation::History water_model_history;
+    MM3D::MirrorProjectionInterpolation::History mirror_projection_history;
+    std::optional<MM3D::MirrorProjectionInterpolation::Sample> mirror_projection_override;
     MM3D::MovingEffectInterpolation::History moving_effect_history;
     std::optional<MM3D::MovingEffectInterpolation::Colors> moving_effect_colors;
     std::optional<std::pair<unsigned,float>> water_model_alpha_override;
@@ -200,6 +228,7 @@ private:
     MM3D::SwordTrailInterpolation::History sword_trail_history;
     MM3D::ShockwaveInterpolation::History shockwave_history;
     MM3D::BubbleInterpolation::History bubble_history;
+    MM3D::IceParticleInterpolation::History ice_particle_history;
     MM3D::SplashInterpolation::History splash_history, splash_cpu_history;
     std::optional<std::array<u32,3>> splash_offsets;
     bool splash_blend{};
@@ -270,6 +299,12 @@ private:
     std::array<u32,2> pause_textures{};
     std::array<unsigned,2> pause_orientation{};
     std::array<int,4> pause_draw{};
+    std::array<std::unique_ptr<Surface>,2> photo_images;
+    std::array<u32,2> photo_textures{};
+    std::array<unsigned,2> photo_orientation{};
+    std::string photo_saved_key;
+    std::array<std::shared_ptr<const PhotoTransfer::Pixels>,2> photo_saved_pixels;
+    MM3D::PhotoCapture::SaveQueue photo_saves;
 #endif
 
     VertexLayout software_layout;
