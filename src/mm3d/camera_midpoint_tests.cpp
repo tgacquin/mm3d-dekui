@@ -3374,7 +3374,10 @@ int main() {
             auto light=pose(4,10004,0x84bf0b3a9fcca9e4ull);light.pose.bones[1]=light.pose.bones[2];
             p.fill(Camera(0,10000));p[0]=Identity();L::History beam;
             beam.Apply(1,0,Identity(),p,{light},true,60);
-            for(auto& b:light.pose.bones)b[3]=2;p[0][0][3]=2;
+            for(auto& b:light.pose.bones) {
+                b[3]=2;
+            }
+            p[0][0][3]=2;
             mid=beam.Apply(2,33,Identity(),p,{light},true,60);
             Check(mid[0] && std::abs((*mid[0])[0][3]-1)<1e-6,"equivalent mirror beam bones interpolate");
         }
@@ -3492,7 +3495,10 @@ int main() {
                 b=set(4);
                 Check(!divergent.Apply(2,33,Identity(),b,{deku},true,vertices)[0],"shared current Deku bones with divergent midpoints rejected");
                 auto hidden=Identity();for(unsigned r=0;r<3;++r)for(unsigned c=0;c<3;++c)hidden[r][c]=0;
-                for(auto& bone:deku.pose.bones)bone=Flatten(hidden);b.fill(hidden);
+                for(auto& bone:deku.pose.bones) {
+                    bone=Flatten(hidden);
+                }
+                b.fill(hidden);
                 Check(!h.Apply(3,66,Identity(),b,{deku},true,vertices)[0],"burrowed head hidden geometry stays hidden");
             }
         }
@@ -3503,7 +3509,10 @@ int main() {
                 auto actor=pose(unsigned(spec[1]),10010,spec[0]);L::Palette p;
                 p.fill(Camera(0,10000));p[0]=Identity();L::History h;
                 Check(!h.Apply(1,0,Identity(),p,{actor},true,unsigned(spec[2]))[0],"shared actor bones seed");
-                for(auto& bone:actor.pose.bones)bone[3]=4;p[0][0][3]=4;
+                for(auto& bone:actor.pose.bones) {
+                    bone[3]=4;
+                }
+                p[0][0][3]=4;
                 auto mid=h.Apply(2,33,Identity(),p,{actor},true,unsigned(spec[2]));
                 Check(mid[0] && std::abs((*mid[0])[0][3]-2)<1e-6,"tank fish/Bombchu equivalent bones get midpoint");
                 auto duplicate=actor;duplicate.pose.instance++;

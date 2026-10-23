@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <span>
 #include <vector>
@@ -22,7 +23,7 @@ constexpr U32 FirstSVC=0xfffa98;
 constexpr std::array<U32,4> PCs{0x188de0,0x188fb0,0x609fbc,0x1b6d38};
 constexpr std::array<U32,4> Words{0xe59d3004,0xe59d000c,0xe284200c,0xe1a05001};
 inline U32 Instruction(U32 pc,U32 word) {
-    for(unsigned i=0;i<PCs.size();++i)if(pc==PCs[i] && word==Words[i])return 0xef000000|FirstSVC+i;
+    for(unsigned i=0;i<PCs.size();++i)if(pc==PCs[i] && word==Words[i])return 0xef000000|(FirstSVC+i);
     return word;
 }
 template<class M> bool CodeMatches(M& m) {

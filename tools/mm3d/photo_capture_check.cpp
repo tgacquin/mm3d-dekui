@@ -62,7 +62,7 @@ int main(int argc,char** argv) {
     }
     assert(CodeMatches(m));m.words[PCs[0]]^=1;assert(!CodeMatches(m));m.words[PCs[0]]^=1;
     for(unsigned i=0;i<PCs.size();++i) {
-        assert(Instruction(PCs[i],Words[i])==(0xef000000|FirstSVC+i));
+        assert(Instruction(PCs[i],Words[i])==(0xef000000|(FirstSVC+i)));
         assert(Instruction(PCs[i],Words[i]^1)==(Words[i]^1));
     }
     Fake fake;backend=&fake;Hook h;

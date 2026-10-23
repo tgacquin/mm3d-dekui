@@ -13,7 +13,7 @@ constexpr U32 FirstSVC=0xffffb8;
 constexpr std::array<U32,3> PCs{0x120648,0x141d88,0x198868};
 constexpr std::array<U32,3> Words{0xe0870108,0xe280c01c,0xe1a04000};
 inline U32 Instruction(U32 pc,U32 word) {
-    for(unsigned i=0;i<PCs.size();++i)if(pc==PCs[i]&&word==Words[i])return 0xef000000|FirstSVC+i;
+    for(unsigned i=0;i<PCs.size();++i)if(pc==PCs[i]&&word==Words[i])return 0xef000000|(FirstSVC+i);
     return word;
 }
 template<class M> bool CodeMatches(M& m) {
