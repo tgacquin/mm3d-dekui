@@ -118,6 +118,7 @@ private:
     bool vsync_enabled{};
     bool blit_supported;
     bool use_present_thread{true};
+    bool defer_present_handoff{};
     void* last_render_surface{};
 };
 

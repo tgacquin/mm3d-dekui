@@ -14,6 +14,8 @@
 #include "vk_platform.h"
 
 #include <vk_mem_alloc.h>
+#include <cstdlib>
+#include <string_view>
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/interpolation_performance.h"
 #include "mm3d/overlay.h"
@@ -115,6 +117,15 @@ PresentWindow::PresentWindow(Frontend::EmuWindow& emu_window_, const Instance& i
           CanBlitToSwapchain(instance.GetPhysicalDevice(), swapchain.GetSurfaceFormat().format)},
       use_present_thread{Settings::values.async_presentation.GetValue()},
       last_render_surface{emu_window.GetWindowInfo().render_surface} {
+
+#ifdef ENABLE_MM3D_PRESENTATION
+    // Diagnostic comparison with the old batching schedule. Always dispatch
+    // before a presentation wait, including the two-frame deadlock case.
+    const char* defer = std::getenv("DEKUI_DEFER_PRESENT_HANDOFF");
+    defer_present_handoff = defer && std::string_view{defer} == "1";
+    LOG_INFO(Render_Vulkan, "Presentation handoff dispatch={}",
+             defer_present_handoff ? "before wait (diagnostic)" : "immediate");
+#endif
 
     const u32 num_images = swapchain.GetImageCount();
     const vk::Device device = instance.GetDevice();
@@ -282,6 +293,13 @@ Frame* PresentWindow::GetRenderFrame() {
 
     // Wait for free presentation frames
     std::unique_lock lock{free_mutex};
+    if (defer_present_handoff && use_present_thread && free_queue.empty()) {
+        // The presenter may be waiting for a callback still buffered on this
+        // thread. Release its free-frame lock before handing off worker work.
+        lock.unlock();
+        scheduler.DispatchWork();
+        lock.lock();
+    }
     free_cv.wait(lock, [this] { return !free_queue.empty(); });
 
     // Take the frame from the queue
@@ -337,13 +355,17 @@ void PresentWindow::Present(Frame* frame) {
     // release the retained frame. Dispatch now rather than leaving the callback
     // buffered on the waiting render thread. Worker ordering still puts it after
     // the render-ready submission; no GPU completion wait is needed.
-    scheduler.DispatchWork();
+    if (!defer_present_handoff) scheduler.DispatchWork();
 }
 
 void PresentWindow::WaitPresent() {
     if (!use_present_thread) {
         return;
     }
+
+    // Flush deferred handoffs even when no subsequent frame is acquired (pause,
+    // readback, resize or shutdown). Never dispatch while holding queue locks.
+    if (defer_present_handoff) scheduler.WaitWorker();
 
     // Wait for the present queue to be empty
     {

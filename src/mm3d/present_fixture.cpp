@@ -223,6 +223,9 @@ int main(int argc, char** argv) {
                     });
                     scheduler.Flush(frame->render_ready);
                     presentation.Present(frame);
+                    // A caller may wait without a subsequent draw or Finish.
+                    // Deferred diagnostic handoffs must reach the presenter too.
+                    if (i == 15) presentation.WaitPresent();
                     // Burst after the paced pairs to exercise in-flight frame
                     // reuse, then pause/read back the retained clean background.
                     // Never modifies the guest clock or frame limiter.

@@ -33,3 +33,25 @@ adds overhead. Use matching captures for comparisons. Nothing is uploaded.
 Remove the launch option and restart to hide the tab again. This option is not
 saved in user settings. It does not enable the developer editor or change the
 rendering algorithm. It is a support switch, not a password or access control.
+
+## Presentation scheduling comparison
+
+To isolate the 1.1.0 presentation-handoff change while retaining the two-frame
+deadlock protection, compare the default launch above with:
+
+```text
+DEKUI_DIAGNOSTICS=1 DEKUI_DEFER_PRESENT_HANDOFF=1 %command%
+```
+
+Keep CPU interpolation, resolution, location and camera unchanged. Restart for
+each run and capture 30 seconds after gameplay settles. The log reports either
+`Presentation handoff dispatch=immediate` (default) or
+`Presentation handoff dispatch=before wait (diagnostic)`.
+
+The diagnostic mode leaves the handoff buffered while render frames are
+available, as in the old batching schedule. It explicitly dispatches before
+waiting for a free frame and completes worker handoffs before waiting for
+presentation during pause, resize or readback. It does not remove animation
+coverage, relax depth-cache freshness, or wait for GPU completion at dispatch.
+This is an isolation test, not a confirmed performance fix. Remove the extra
+environment variable and restart to restore the default; nothing is saved.
