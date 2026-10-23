@@ -3858,7 +3858,19 @@ int main(int argc,char** argv) {
         assert(!MM3D::ScheduleDetail::Prepare(nm,sp,np,nh.helper,writes));assert(nm.words==before);
     }
     {
-        Memory fade;MM3D::NativeNotebook::Hook h;
+        struct FadeMemory : Memory {
+            unsigned invalid_reads=0;
+            std::optional<U32> Read(U32 at) {
+                if(!Pointer(at))++invalid_reads;
+                return Memory::Read(at);
+            }
+        } fade;
+        MM3D::NativeNotebook::Hook h;
+        for(U32 owner:{0u,3u,0xfffffffcu}) {
+            h.notebook_owner=owner;h.detail_opacity=0;
+            h.MapFade(fade);
+            assert(h.detail_opacity==1 && fade.invalid_reads==0);
+        }
         auto owner=fade.Alloc(0x800),map=fade.Layout("UpEventMap"),all=fade.Widget("all");
         auto board=fade.Widget("blackboard_g"),content=fade.Widget("event_map_g"),player=fade.Alloc(0x20);
         fade.Children(map+8,{all});fade.Children(all,{board,content});
@@ -3878,6 +3890,8 @@ int main(int argc,char** argv) {
         fade.words[owner+0x4c]=255;fade.words[board+0x134]=std::bit_cast<U32>(1.f);
         h.MapFade(fade);assert(h.detail_opacity==1); // stale hidden-map alpha ignored
         fade.words[player+8]=1;h.MapFade(fade);assert(h.detail_opacity==0); // closing still fades
+        fade.words[owner+0x58]=0;h.MapFade(fade);
+        assert(h.detail_opacity==1 && fade.invalid_reads==0);
     }
     {
         Memory m;MM3D::NativeNotebook::Hook h;h.frame[10]={240,50,.5f};
