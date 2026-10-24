@@ -1,4 +1,5 @@
 import configparser
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,14 @@ class GameFolderTests(unittest.TestCase):
             with patch('setup_game_folder.validate'), patch('setup_game_folder.extract',
                     side_effect=lambda rom,out:out.mkdir(parents=True)), patch('setup_game_folder.build'):
                 setup(root,root,rom)
+            from setup_game_folder import RESOURCES
+            defaults=json.loads((RESOURCES/'defaults/presentation.json').read_text())
+            actual=json.loads((root/'user/config/mm3d-local/presentation.json').read_text())
+            for key,value in defaults.items():
+                if key.startswith(('player_hud_', 'dungeon_map_', 'notebook_')) or key=='minimap_opacity':
+                    self.assertEqual(actual[key],value,key)
+            self.assertEqual(actual['player_hud_layout_version'],1)
+            self.assertEqual(actual['player_hud_scale'],0)
             textures=root/'user/load/textures/0004000000125500'
             self.assertTrue(textures.is_dir())
             self.assertEqual(list(textures.iterdir()),[])

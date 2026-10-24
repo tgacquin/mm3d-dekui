@@ -10,10 +10,23 @@ inline constexpr std::array<const char*,Count> Keys{"dpad","magic","hearts","but
 inline constexpr std::array<const char*,Count> Labels{"D-pad","Magic meter","Hearts","Buttons","Minimap","Clock","Rupees","Minigame counter","Epona carrots","Timer"};
 inline constexpr std::array<const char*,6> ButtonKeys{"x","y","i","ii","a","b"};
 inline constexpr std::array<const char*,6> ButtonLabels{"X","Y","I","II","A","B"};
-struct Options {float opacity=1.f,banner_darkness=0.f;std::array<int,6> button_x{},button_y{};bool hide_minimap=false;bool hide_menu_prompts=false;int banner_y=0;int overall=0,top=0,bottom=0,heart_spacing=0,magic_height_steps=0;std::array<int,Count> elements{},x{},y{};float magic_width=1.f;int base_scale=0;};
-// Editor-authored size is independent of the player's relative F2 adjustment.
-inline Options FreshDefaults(){Options o;o.base_scale=2;return o;}
-inline void ResetPlayer(Options& o){const int base=o.base_scale;const bool prompts=o.hide_menu_prompts;o={};o.base_scale=base;o.hide_menu_prompts=prompts;}
+struct Options {float opacity=1.f,banner_darkness=0.f;std::array<int,6> button_x{},button_y{};bool hide_minimap=false;bool hide_menu_prompts=false;int banner_y=0;int overall=0,top=0,bottom=0,heart_spacing=0,magic_height_steps=0;std::array<int,Count> elements{},x{},y{};float magic_width=1.f;int base_scale=0;unsigned layout_version=0;};
+// Version 0 keeps existing profiles and their original F2 reference points.
+// Version 1 stores the arranged layout directly; F2 displays offsets from it.
+// Rendering always consumes the same absolute values, avoiding re-scaling or
+// re-positioning an existing layout during an upgrade.
+inline Options FreshDefaults(){
+    Options o;o.layout_version=1;o.base_scale=2;
+    o.elements[Hearts]=4;o.x[Hearts]=-3;o.y[Hearts]=1;o.heart_spacing=-17;
+    o.magic_height_steps=-4;o.magic_width=1.04f;o.y[Magic]=5;
+    o.elements[Buttons]=1;o.elements[Minimap]=2;
+    o.elements[Rupees]=2;o.x[Rupees]=-3;
+    o.x[Minigame]=3;o.y[Minigame]=13;
+    return o;
+}
+inline Options UiDefaults(const Options& o,bool player){return player&&o.layout_version==1?FreshDefaults():Options{};}
+inline float DefaultMinimapOpacity(const Options& o){return o.layout_version==1?.75f:.85f;}
+inline void ResetPlayer(Options& o){const bool prompts=o.hide_menu_prompts;o=FreshDefaults();o.hide_menu_prompts=prompts;}
 inline std::atomic<float> opacity{1.f},banner_darkness{0.f};
 inline std::atomic<int> banner_y{0};
 inline int BannerY(){return std::clamp(banner_y.load(),-240,240);}

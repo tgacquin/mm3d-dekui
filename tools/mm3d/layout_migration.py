@@ -18,7 +18,6 @@ GROUPS = {
                        'mask_present_5_', 'mask_present_help_', 'mask_present_native'),
     'mask_description': ('mask_present_6_',),
     'magic_height': ('magic_bar_height',),
-    'minimap_opacity': ('minimap_opacity',),
 }
 
 
@@ -81,7 +80,7 @@ def migrate(raw, data):
     # Existing choices, unknown keys and ambiguous layout groups stay unchanged.
     held_prefixes = tuple(p for name in retained for p in GROUPS[name])
     for k, v in current.items():
-        if k not in obj and not (held_prefixes and k.startswith(held_prefixes)):
+        if k not in obj and k not in data.get('fresh_install_only', []) and not (held_prefixes and k.startswith(held_prefixes)):
             obj[k] = data.get('existing_install_defaults', {}).get(k, v)
     return (raw if obj == original else (json.dumps(obj, indent=2)+'\n').encode()), retained
 

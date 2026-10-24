@@ -45,7 +45,7 @@ add_test(NAME mm3d_cpu_vertex_replay COMMAND mm3d_cpu_vertex_replay_tests)
 
 add_executable(mm3d_tests tests.cpp settings.cpp trace.cpp shader_usage.cpp camera_writer.cpp)
 target_link_libraries(mm3d_tests PRIVATE Qt6::Core nihstro-headers Boost::boost)
-add_test(NAME mm3d_diagnostics COMMAND mm3d_tests)
+add_test(NAME mm3d_diagnostics COMMAND mm3d_tests "${PROJECT_SOURCE_DIR}/resources/mm3d/defaults/presentation.json")
 add_executable(mm3d_fast_time_tests fast_time_tests.cpp)
 target_include_directories(mm3d_fast_time_tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
 add_test(NAME mm3d_fast_time COMMAND mm3d_fast_time_tests)

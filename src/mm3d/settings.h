@@ -101,7 +101,7 @@ struct Settings {
     float dpad_y = 0.f;
     float dpad_offset_x = 0.f, dpad_offset_y = 0.f;
     bool minimap = true;
-    float minimap_scale = .36f, minimap_opacity = .85f;
+    float minimap_scale = .36f, minimap_opacity = .75f;
     float minimap_right_margin = 8.f, minimap_bottom_margin = 8.f;
     std::vector<WidescreenProbe::Draw> fullscreen_draws;
     float scale = 1.f;

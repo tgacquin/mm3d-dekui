@@ -20,7 +20,10 @@ class LayoutMigrationTests(unittest.TestCase):
         old=self.policy['previous'];new,held=self.apply(old)
         self.assertEqual(held,[])
         for k,v in self.policy['current'].items():
-            expected = old[k] if k in self.policy['preserve_existing'] else self.policy.get('existing_install_defaults', {}).get(k, v)
+            if k in self.policy.get('fresh_install_only', []) and k not in old:
+                self.assertNotIn(k, new)
+                continue
+            expected = old[k] if k in old and k in self.policy['preserve_existing'] else self.policy.get('existing_install_defaults', {}).get(k, v)
             self.assertEqual(new[k],expected,k)
 
     def test_reported_deck_case_preserves_all_nonlayout_preferences(self):
@@ -148,7 +151,7 @@ class LayoutMigrationTests(unittest.TestCase):
         self.assertIn('mask_description', held)
 
     def test_old_hud_defaults_upgrade_but_custom_values_stay(self):
-        for key in ('magic_bar_height', 'minimap_opacity'):
+        for key in ('magic_bar_height',):
             old = dict(self.policy['current'])
             old[key] = self.policy['previous'][key]
             new, _ = self.apply(old)
@@ -156,6 +159,40 @@ class LayoutMigrationTests(unittest.TestCase):
             old[key] = .54321
             new, _ = self.apply(old)
             self.assertEqual(new, old)
+
+    def test_arranged_defaults_never_replace_existing_hud_or_map(self):
+        keys = tuple(self.policy['existing_install_defaults'])
+        for customized in (False, True):
+            old = dict(self.policy['previous'])
+            old.update({k: v for k, v in self.policy['existing_install_defaults'].items()})
+            if customized:
+                old.update(player_hud_hearts_x=47, player_hud_heart_spacing=12,
+                           player_hud_magic_width=1.7, player_hud_base_scale=-2,
+                           minimap_opacity=.31, dungeon_map_2_y=81,
+                           dungeon_map_prompts_scale=1.23, dungeon_map_prompts_spacing=31,
+                           dungeon_map_arrow_up_y=17, notebook_buttons_scale=1.6,
+                           notebook_prompt_y=9, notebook_map_prompt_y=-29)
+            new, _ = self.apply(old)
+            for key in keys:
+                self.assertEqual(new[key], old[key], key)
+            for key in old:
+                if key.startswith(('dungeon_map_', 'notebook_')):
+                    self.assertEqual(new[key], old[key], key)
+            for key in self.policy['fresh_install_only']:
+                if key not in old:
+                    self.assertNotIn(key, new)  # Keep legacy Notebook inheritance.
+            again, _ = self.apply(new)
+            self.assertEqual(again, new)
+
+    def test_absent_hud_fields_use_legacy_values(self):
+        new, _ = self.apply({'version': 1})
+        for key, value in self.policy['existing_install_defaults'].items():
+            self.assertEqual(new[key], value, key)
+        for key in self.policy['fresh_install_only']:
+            self.assertNotIn(key, new)
+        for opacity in (.85, .75, .54):
+            new, _ = self.apply(dict(self.policy['previous'], minimap_opacity=opacity))
+            self.assertEqual(new['minimap_opacity'], opacity)
 
     def test_hd_photo_fallback_preference_survives_upgrade(self):
         new, _ = self.apply(dict(self.policy['previous']))

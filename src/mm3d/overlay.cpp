@@ -849,12 +849,19 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
         const auto hud_controls=[&]() {
             auto& hud=state.settings.player_hud;
             bool changed=false;
-            const auto scale_control=[&](const char* label,int& steps) {
+            const auto defaults=HudAdjustments::UiDefaults(hud,PlayerOverlay());
+            const auto int_control=[&](const char* label,int& value,int low,int high,int base) {
+                int displayed=value-base;
+                if(ImGui::SliderInt(label,&displayed,low-base,high-base,"%+d",ImGuiSliderFlags_AlwaysClamp)) {
+                    value=displayed+base;changed=true;
+                }
+            };
+            const auto scale_control=[&](const char* label,int& steps,int base=0) {
                 ImGui::PushID(label);
-                changed|=ImGui::SliderInt(label,&steps,-10,10,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                int_control(label,steps,-10,10,base);
                 help_text("0 is the default size. Each step changes size by 5%. Overall and individual adjustments combine.");
                 ImGui::SameLine();
-                if(ImGui::Button("Reset")){steps=0;changed=true;}
+                if(ImGui::Button("Reset")){steps=base;changed=true;}
                 ImGui::PopID();
             };
             const auto percent_control=[&](const char* label,float& value,float fallback,const char* help) {
@@ -890,36 +897,38 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                     for(unsigned i=0;i<HudAdjustments::Count;++i) {
                         ImGui::PushID(int(i));
                         if(ImGui::TreeNode(HudAdjustments::Labels[i])) {
-                            scale_control("Scale",hud.elements[i]);
+                            scale_control("Scale",hud.elements[i],defaults.elements[i]);
                             if(i==HudAdjustments::Hearts) {
-                                changed|=ImGui::SliderInt("Heart spacing",&hud.heart_spacing,
-                                    -HudAdjustments::HeartSpacingLimit,HudAdjustments::HeartSpacingLimit,
-                                    "%+d",ImGuiSliderFlags_AlwaysClamp);
+                                int_control("Heart spacing",hud.heart_spacing,
+                                    -HudAdjustments::HeartSpacingLimit,HudAdjustments::HeartSpacingLimit,defaults.heart_spacing);
                                 help_text("Left brings hearts closer; right spreads them out. Each step changes spacing by 0.5%; heart size stays the same.");
                                 ImGui::SameLine();
-                                if(ImGui::Button("Reset heart spacing")){hud.heart_spacing=0;changed=true;}
+                                if(ImGui::Button("Reset heart spacing")){hud.heart_spacing=defaults.heart_spacing;changed=true;}
                             }
                             if(i==HudAdjustments::Minimap)
-                                percent_control("Opacity",state.settings.minimap_opacity,.85f,"Controls minimap transparency. Combines with overall HUD opacity.");
+                                percent_control("Opacity",state.settings.minimap_opacity,HudAdjustments::DefaultMinimapOpacity(hud),"Controls minimap transparency. Combines with overall HUD opacity.");
                             if(i==HudAdjustments::Magic) {
-                                changed|=ImGui::SliderFloat("Width",&hud.magic_width,.5f,3.f,"%.2fx",ImGuiSliderFlags_AlwaysClamp);
-                                hover_help("Extends the fill, black background and border to the right while keeping the left edge fixed. 1.00x preserves your current width.");
+                                float width=hud.magic_width/defaults.magic_width;
+                                if(ImGui::SliderFloat("Width",&width,.5f/defaults.magic_width,3.f/defaults.magic_width,"%.2fx",ImGuiSliderFlags_AlwaysClamp)) {
+                                    hud.magic_width=width*defaults.magic_width;changed=true;
+                                }
+                                hover_help("Extends the fill, black background and border to the right while keeping the left edge fixed. 1.00x is the default width.");
                                 ImGui::SameLine();
-                                if(ImGui::Button("Reset width")){hud.magic_width=1.f;changed=true;}
-                                changed|=ImGui::SliderInt("Height",&hud.magic_height_steps,-10,10,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                                if(ImGui::Button("Reset width")){hud.magic_width=defaults.magic_width;changed=true;}
+                                int_control("Height",hud.magic_height_steps,-10,10,defaults.magic_height_steps);
                                 help_text("Changes height live while keeping the top edge fixed. Each step is 5% of the default height; width stays unchanged.");
                                 ImGui::SameLine();
-                                if(ImGui::Button("Reset height")){hud.magic_height_steps=0;changed=true;}
+                                if(ImGui::Button("Reset height")){hud.magic_height_steps=defaults.magic_height_steps;changed=true;}
                             }
-                            changed|=ImGui::SliderInt("X position",&hud.x[i],-400,400,"%+d",ImGuiSliderFlags_AlwaysClamp);
-                            changed|=ImGui::SliderInt("Y position",&hud.y[i],-240,240,"%+d",ImGuiSliderFlags_AlwaysClamp);
-                            if(ImGui::Button("Reset position")){hud.x[i]=0;hud.y[i]=0;changed=true;}
+                            int_control("X position",hud.x[i],-400,400,defaults.x[i]);
+                            int_control("Y position",hud.y[i],-240,240,defaults.y[i]);
+                            if(ImGui::Button("Reset position")){hud.x[i]=defaults.x[i];hud.y[i]=defaults.y[i];changed=true;}
                             ImGui::SameLine();
-                            if(ImGui::Button("Reset element")){hud.elements[i]=0;hud.x[i]=0;hud.y[i]=0;
+                            if(ImGui::Button("Reset element")){hud.elements[i]=defaults.elements[i];hud.x[i]=defaults.x[i];hud.y[i]=defaults.y[i];
                                 if(i==HudAdjustments::Buttons){hud.button_x={};hud.button_y={};}
-                                if(i==HudAdjustments::Hearts)hud.heart_spacing=0;
-                                if(i==HudAdjustments::Magic){hud.magic_height_steps=0;hud.magic_width=1.f;}
-                                if(i==HudAdjustments::Minimap)state.settings.minimap_opacity=.85f;changed=true;}
+                                if(i==HudAdjustments::Hearts)hud.heart_spacing=defaults.heart_spacing;
+                                if(i==HudAdjustments::Magic){hud.magic_height_steps=defaults.magic_height_steps;hud.magic_width=defaults.magic_width;}
+                                if(i==HudAdjustments::Minimap)state.settings.minimap_opacity=HudAdjustments::DefaultMinimapOpacity(hud);changed=true;}
                             if(i==HudAdjustments::Buttons) {
                                 for(unsigned b=0;b<6;++b)if(ImGui::TreeNode(HudAdjustments::ButtonLabels[b])) {
                                     const auto slot=StickControls::ItemLayoutIndex(b,2);
@@ -947,7 +956,8 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 ImGui::EndTabBar();
             }
             ImGui::Separator();
-            if(ImGui::Button("Reset all HUD settings")){HudAdjustments::ResetPlayer(hud);state.settings.minimap_opacity=.85f;changed=true;}
+            if(ImGui::Button("Reset all HUD settings")){HudAdjustments::ResetPlayer(hud);state.settings.minimap_opacity=HudAdjustments::DefaultMinimapOpacity(hud);changed=true;}
+            hover_help("Restores the latest default HUD layout, including size, spacing and positions. Map and Notebook layouts are unchanged.");
             if(changed) {
                 HudAdjustments::Apply(hud);
                 Minimap::opacity.store(state.settings.minimap_opacity);

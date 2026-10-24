@@ -103,6 +103,7 @@ class ResourceUpgradeTests(unittest.TestCase):
                                         player_hud_magic_width=1.7, notebook_buttons_scale=1.25,
                                         notebook_buttons_icon_scale=.75)
                         original.pop('player_hud_base_scale')
+                        original.pop('player_hud_layout_version')
                         if choice is None:
                             original.pop('stick_click_controls')
                         else:
@@ -120,6 +121,7 @@ class ResourceUpgradeTests(unittest.TestCase):
                         # loader uses false for old profiles without this key.
                         self.assertEqual(actual.get('stick_click_controls', False), bool(choice))
                         self.assertEqual(actual.get('player_hud_base_scale', 0), 0)
+                        self.assertEqual(actual.get('player_hud_layout_version', 0), 0)
                         if revision == upgrade.layout_migration.VERSION:
                             self.assertEqual((self.user/upgrade.layout_migration.CONFIG).read_bytes(), raw)
                         before = self.snapshot()
@@ -389,7 +391,7 @@ class ResourceUpgradeTests(unittest.TestCase):
                     expected = dict(original)
                     for key in ('gear_6_x', 'gear_6_y', 'gear_6_scale', 'mask_present_6_x',
                                 'mask_present_6_y', 'mask_present_6_scale',
-                                'magic_bar_height', 'minimap_opacity'):
+                                'magic_bar_height',):
                         expected[key] = defaults[key]
                     self.assertEqual(actual, expected)
                     self.assertEqual(extract.call_count, 0)

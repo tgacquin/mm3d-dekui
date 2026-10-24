@@ -36,21 +36,47 @@ int main(int argc, char** argv) {
                 file.write(QJsonDocument(QJsonObject{{"version",1},{"player_hud_scale",steps}}).toJson());
                 file.close();
                 MM3D::Settings old;Require(old.Load(path),"legacy HUD loads");
-                Require(old.player_hud.base_scale==0&&old.player_hud.overall==steps,
+                Require(old.player_hud.layout_version==0&&old.player_hud.base_scale==0&&old.player_hud.overall==steps&&
+                        old.player_hud.heart_spacing==0&&old.player_hud.elements[MM3D::HudAdjustments::Hearts]==0,
                         "legacy HUD size and user choice stay unchanged");
                 Require(old.Save(path),"legacy HUD saves");
                 MM3D::Settings again;Require(again.Load(path),"legacy HUD reloads");
-                Require(again.player_hud.base_scale==0&&again.player_hud.overall==steps,
+                Require(again.player_hud.layout_version==0&&again.player_hud.base_scale==0&&again.player_hud.overall==steps,
                         "legacy HUD is not enlarged after restarting");
             }
             fresh.player_hud.overall=-3;
             Require(fresh.Save(path),"relative HUD scale saves");
             MM3D::Settings restored;Require(restored.Load(path),"relative HUD scale loads");
-            Require(restored.player_hud.base_scale==2&&restored.player_hud.overall==-3,
+            Require(restored.player_hud.layout_version==1&&restored.player_hud.base_scale==2&&restored.player_hud.overall==-3&&
+                    restored.player_hud.x==fresh.player_hud.x&&restored.player_hud.elements==fresh.player_hud.elements&&
+                    restored.player_hud.magic_width==fresh.player_hud.magic_width&&restored.minimap_opacity==.75f,
                     "editor baseline and user offset persist independently");
             MM3D::HudAdjustments::ResetPlayer(restored.player_hud);
             Require(restored.player_hud.base_scale==2&&restored.player_hud.overall==0,
                     "F2 reset retains the editor baseline");
+            restored.player_hud={};restored.player_hud.hide_menu_prompts=true;
+            MM3D::HudAdjustments::ResetPlayer(restored.player_hud);
+            Require(restored.player_hud.layout_version==1&&restored.player_hud.hide_menu_prompts&&
+                    restored.player_hud.x==fresh.player_hud.x&&restored.player_hud.y==fresh.player_hud.y&&
+                    restored.player_hud.elements==fresh.player_hud.elements&&
+                    restored.player_hud.heart_spacing==fresh.player_hud.heart_spacing,
+                    "explicit reset adopts arranged defaults without changing menu prompt preference");
+            Require(restored.Save(path),"reset HUD saves");
+            MM3D::Settings reset;Require(reset.Load(path)&&reset.player_hud.layout_version==1,
+                    "reset layout survives restart");
+            // CTest supplies the shipped profile to prevent UI/reset baselines
+            // silently drifting away from fresh-install defaults.
+            if(argc>1) {
+                MM3D::Settings shipped;Require(shipped.Load(QString::fromLocal8Bit(argv[1])),"shipped defaults load");
+                const auto& h=shipped.player_hud;const auto f=MM3D::HudAdjustments::FreshDefaults();
+                Require(h.layout_version==f.layout_version&&h.base_scale==f.base_scale&&h.overall==f.overall&&
+                        h.elements==f.elements&&h.x==f.x&&h.y==f.y&&h.button_x==f.button_x&&h.button_y==f.button_y&&
+                        h.magic_width==f.magic_width&&h.magic_height_steps==f.magic_height_steps&&
+                        h.heart_spacing==f.heart_spacing&&h.top==f.top&&h.bottom==f.bottom&&
+                        h.opacity==f.opacity&&h.banner_y==f.banner_y&&h.banner_darkness==f.banner_darkness&&
+                        h.hide_minimap==f.hide_minimap&&shipped.minimap_opacity==fresh.minimap_opacity,
+                        "shipped HUD arrangement exactly matches neutral F2 and reset defaults");
+            }
         }
         {
             QTemporaryDir directory;
@@ -525,7 +551,7 @@ int main(int argc, char** argv) {
         settings.depth_of_field={true,800.f,1600.f,2.f};
         settings.ambient_occlusion={true,.75f,60.f};
         Require(settings.player_hud.banner_y==0,"location banner uses editor position by default");
-        Require(settings.player_hud.magic_width==1.f,"magic width preserves existing geometry by default");
+        Require(settings.player_hud.magic_width==1.04f,"fresh magic width uses arranged layout");
         settings.player_hud.magic_width=1.75f;
         settings.player_hud.banner_y=24;
         Require(!settings.double_prices&&settings.price_multiplier==2,"price difficulty defaults off with 2x selected");

@@ -195,8 +195,18 @@ void PlayerHudChecks() {
         o.base_scale=step;o.overall=0;H::Apply(o);hook.Begin(m,hud);
         assert(m.words==adjusted);hook.End(m);assert(m.words==baseline);
         o.overall=3;o.x[H::Hearts]=9;H::ResetPlayer(o);
-        assert(o.base_scale==step&&o.overall==0&&o.x[H::Hearts]==0);
+        assert(o.base_scale==2&&o.overall==0&&o.x[H::Hearts]==-3&&o.layout_version==1);
     }
+    // The UI version changes readouts only, never renderer geometry.
+    auto fresh=H::FreshDefaults(),legacy=fresh;legacy.layout_version=0;
+    H::Apply(legacy);hook.Begin(m,hud);const auto authored=m.words;hook.End(m);
+    H::Apply(fresh);hook.Begin(m,hud);assert(m.words==authored);hook.End(m);
+    const auto ui=H::UiDefaults(fresh,true),old_ui=H::UiDefaults(legacy,true);
+    assert(ui.elements==fresh.elements&&ui.x==fresh.x&&ui.y==fresh.y);
+    assert(ui.heart_spacing==fresh.heart_spacing&&ui.magic_height_steps==fresh.magic_height_steps);
+    assert(fresh.magic_width/ui.magic_width==1.f&&old_ui.magic_width==1.f);
+    assert(old_ui.elements==H::Options{}.elements&&H::UiDefaults(fresh,false).x==old_ui.x);
+    assert(m.words==baseline);
     H::Options positioned;positioned.overall=4;positioned.top=7;positioned.bottom=9;
     H::Apply(positioned);hook.Begin(m,hud);auto scaled=m.words;hook.End(m);
     for(unsigned i=0;i<H::Count;++i){positioned.x[i]=int(i)+3;positioned.y[i]=-int(i)-2;}
