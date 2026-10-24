@@ -18,8 +18,14 @@ inline std::optional<std::vector<Quad>> Decode(std::span<const Vertex> inputs,
     if (!decoded) return {};
     for (const auto& q : *decoded) {
         const auto& color = q.vertices[0][1];
-        if (!Near(color[0], 1) || !Near(color[1], 1) ||
-            (!Near(color[2], 1) && !Near(color[2], 200.f/255))) return {};
+        const bool pale = Near(color[0], 1) && Near(color[1], 1) &&
+                          (Near(color[2], 1) || Near(color[2], 200.f/255));
+        // Skulltula landing rings use a fixed brown tint instead of the pale
+        // explosion tint. Keep this variant restricted to small ground quads.
+        const bool landing = Near(color[0], .135332525f) &&
+                             Near(color[1], .118415952f) &&
+                             Near(color[2], .118415952f);
+        if (!pale && !landing) return {};
         float aa=0,bb=0,ab=0;
         for(unsigned c=0;c<3;++c) {
             const float a=q.vertices[1][0][c]-q.vertices[0][0][c];
@@ -31,6 +37,11 @@ inline std::optional<std::vector<Quad>> Decode(std::span<const Vertex> inputs,
         if(aa>2048*2048 || bb>2048*2048 ||
            ((aa>.001f || bb>.001f) && (aa<16*16 || bb<16*16 ||
             aa/bb<.8f || aa/bb>1.25f || std::abs(ab)>.01f*std::sqrt(aa*bb))))return {};
+        if (landing) {
+            if (aa > 256*256 || bb > 256*256) return {};
+            for (const auto& vertex : q.vertices)
+                if (!Near(vertex[0][1], q.vertices[0][0][1])) return {};
+        }
         for(unsigned k=0;k<4;++k)
             if(!Near(q.vertices[k][2][0], k<2?0.f:2.f) ||
                !Near(q.vertices[k][2][1], k%2?0.f:2.f))return {};

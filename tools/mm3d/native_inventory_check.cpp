@@ -1,3 +1,4 @@
+#include "mm3d/cursor_interpolation.h"
 // Focused guest-memory checks: clang++ -std=c++20 -Isrc tools/mm3d/native_inventory_check.cpp -o /tmp/inventory-check
 #include <cassert>
 #include <fstream>
@@ -517,7 +518,7 @@ void NotebookPromptChecks() {
     const auto panel_all=m.Widget("all"),detail=m.Widget("quest_list_detail"),text=m.Widget("description");
     m.Children(layout+8,{panel_all});m.Children(panel_all,{detail});m.Children(detail,{text});
     const auto tg=m.Alloc(0x30c),font=m.Alloc(0x14),header=m.Alloc(0x2c),pages=m.Alloc(8);
-    std::string chars=std::string(P::Label)+std::string(P::MapLabel)+std::string(P::ScheduleLabel)+std::string(P::AlarmLabel)+std::string(P::EventsLabel)+std::string(P::ScheduleDetailsLabel)+"Song listBackReturnMove cursorItemsChange tabChooseEquip to IIZR +/Zoom InOut";std::sort(chars.begin(),chars.end());chars.erase(std::unique(chars.begin(),chars.end()),chars.end());
+    std::string chars=std::string(P::Label)+std::string(P::MapLabel)+std::string(P::ScheduleLabel)+std::string(P::AlarmLabel)+std::string(P::EventsLabel)+std::string(P::ScheduleDetailsLabel)+"Song listBackReturnMove cursorItemsChange tabChooseEquip to IIZR +/Zoom inout";std::sort(chars.begin(),chars.end());chars.erase(std::unique(chars.begin(),chars.end()),chars.end());
     const auto records=m.Alloc(chars.size()*12);
     m.words[text+0x28]=tg;m.words[tg+4]=3;m.words[tg+0x28]=font;
     m.words[font+4]=header;m.words[font+0xc]=pages;m.words[font+0x10]=records;
@@ -1050,20 +1051,46 @@ void NotebookPromptChecks() {
             m.Children(bg+8,{bg_group});m.Children(bg_group,{map_pane});
             m.words[map_pane+0x134]=std::bit_cast<U32>(.6f);
             map_hook.valid=map_hook.dungeon=true;map_hook.pass=3;map_hook.panel=panel;map_hook.routed={panel};map_hook.backgrounds[1]=bg;
-            P::pose.scale=1;P::icon_scale=1;P::pose.y=0;P::map_pose.y=-16.1f;
+            MM3D::DungeonMap::Options map_options;map_options.prompts.spacing=16.1f;
+            MM3D::DungeonMap::Apply(map_options);
+            // Notebook changes must no longer move or resize dungeon hints.
+            P::pose.scale=1.5f;P::icon_scale=1.75f;P::pose.y=80;P::map_pose.y=-40;
             auto before=m.words;auto root=map_hook.PromptRoot(m,panel,sp,true);
             assert(root!=panel+8&&m.words[root+0x18]==9);
             auto children=m.words[root+0x14];assert(m.words[children+32]==panel+8);
+            std::array<float,2> original_x{},original_y{};
             for(unsigned row=0;row<2;++row) {
                 auto icon=m.words[children+row*16],label=m.words[children+row*16+4];
                 auto geo=m.words[icon+0x28],text_geo=m.words[label+0x28];
                 assert(std::bit_cast<float>(m.words[geo+0x28])==float(row?128:96)/256);
                 assert(std::bit_cast<float>(m.words[geo+0x2c])==(row?0.f:16.f/128));
                 assert(m.words[text_geo+0x300]==(row?6u:11u));
+                original_x[row]=std::bit_cast<float>(m.words[icon+0xec]);
+                original_y[row]=std::bit_cast<float>(m.words[icon+0xfc]);
+                assert(std::bit_cast<float>(m.words[icon+0xe0])==1.f);
                 assert(std::bit_cast<float>(m.words[icon+0x134])==.6f);
-                assert(std::abs(std::bit_cast<float>(m.words[label+0xfc])-(row?222.f:205.9f))<.001f);
+                assert(std::abs(std::bit_cast<float>(m.words[label+0xfc])-(row?222.f:189.8f))<.001f);
             }
             assert(map_hook.map_prompts.scratch.End(m)==sp&&m.words==before);
+            map_options.prompts.x=35;map_options.prompts.y=-12;
+            MM3D::DungeonMap::Apply(map_options);
+            root=map_hook.PromptRoot(m,panel,sp,true);children=m.words[root+0x14];
+            for(unsigned row=0;row<2;++row) {
+                const auto icon=m.words[children+row*16];
+                assert(std::abs(std::bit_cast<float>(m.words[icon+0xec])-original_x[row]-35)<.001f);
+                assert(std::abs(std::bit_cast<float>(m.words[icon+0xfc])-original_y[row]+12)<.001f);
+            }
+            assert(map_hook.map_prompts.End(m)==sp&&m.words==before);
+            map_options.prompts.scale=.75f;map_options.prompts.icon_scale=1.25f;
+            MM3D::DungeonMap::Apply(map_options);
+            root=map_hook.PromptRoot(m,panel,sp,true);children=m.words[root+0x14];
+            for(unsigned row=0;row<2;++row) {
+                const auto icon=m.words[children+row*16];
+                assert(std::bit_cast<float>(m.words[icon+0xe0])==.75f*1.25f);
+            }
+            assert(map_hook.map_prompts.End(m)==sp&&m.words==before);
+            MM3D::DungeonMap::Apply({});
+            P::pose.scale=1;P::icon_scale=1;P::pose.y=0;P::map_pose.y=-16.1f;
             map_hook.pass=5;assert(map_hook.PromptRoot(m,panel,sp,true)==panel+8);
             map_hook.map_prompts.scratch.End(m);assert(m.words==before);
             // Mirrored Items navigation uses the selected defaults on both
@@ -1144,7 +1171,7 @@ void NotebookPromptChecks() {
                             auto children=m.words[z+0x14],icon=m.words[children],text=m.words[children+4],geo=m.words[text+0x28];
                             assert(m.words[children+16]==composed);
                             assert(std::bit_cast<float>(m.words[m.words[icon+0x28]+0x28])==144.f/256);
-                            std::string_view label=state?"Zoom Out":"Zoom In";
+                            std::string_view label=state?"Zoom out":"Zoom in";
                             assert(m.words[geo+0x300]==label.size());
                             auto records=m.words[geo+0x2fc];float pen=0;
                             for(unsigned i=0;i<label.size();++i) {
@@ -2433,6 +2460,9 @@ void SongListChecks() {
     }
 }
 void DungeonMapShadowChecks() {
+    // Without brown panels the original background pass owns the shadow.
+    const bool sides=MM3D::DungeonMap::side_panels.exchange(false);
+    const bool strip=MM3D::DungeonMap::top_strip.exchange(false);
     Memory m;MM3D::DungeonMap::Hook hook;
     auto map=m.Layout("BackGround"),group=m.Widget("backGround"),pane=m.Widget("map_base",40,12);
     auto brown=m.Layout("CommonBottomBg"),geometry=m.Alloc(0x7c);
@@ -2470,12 +2500,65 @@ void DungeonMapShadowChecks() {
     assert(hook.ShadowRoot(m,map,sp)==map+8);hook.shadow_scratch.End(m);assert(m.words==before);
     hook.pass=1;m.words.erase(sp-0x3400);before=m.words;
     assert(hook.ShadowRoot(m,map,sp)==map+8);hook.shadow_scratch.End(m);assert(m.words==before);
+    MM3D::DungeonMap::side_panels=sides;MM3D::DungeonMap::top_strip=strip;
 }
 void DungeonMapChecks() {
     namespace D=MM3D::DungeonMap;namespace Q=MM3D::NativeMinimap;
     Memory m;D::Hook h;D::Options o;D::Apply(o);
     const auto owner=m.Alloc(0x2100),panel=m.Layout("MenuMapDungeon",0,0,0x300),all=m.Widget("all");
     m.words[owner+0x18]=panel;m.Children(panel+8,{all});
+    {
+        // Overview movement is suppressed without clearing shared input or
+        // modifying cursor coordinates, floor selection, or the A zoom toggle.
+        assert(D::FirstSVC+D::PCs.size()<=MM3D::SongEffect::FirstSVC);
+        assert(D::Instruction(D::PCs[7],D::Words[7])==0xefffffa7);
+        assert(D::Instruction(D::PCs[7],D::Words[7]^1)==(D::Words[7]^1));
+        for(U32 zoom:{0u,1u,2u,3u,4u}) {
+            m.words[0x7786f8]=(zoom<<24)|0x011234;
+            const auto before=m.words;
+            assert(D::OverviewCursorNext(m,owner)==(zoom==3?D::OverviewCursorEnd:D::PCs[7]+4));
+            assert(D::FilterA(m,owner,0xffffffff)==0xffffffff&&m.words==before);
+        }
+        m.words[0x7786f8]=0x03011234;
+        for(U32 mode:{0x100u,0x10000u,0x200u}) {
+            m.words[owner+0x78c]=mode;
+            assert(D::OverviewCursorNext(m,owner)==D::PCs[7]+4);
+        }
+        m.words[owner+0x78c]=0;
+        D::enabled=false;assert(D::OverviewCursorNext(m,owner)==D::PCs[7]+4);D::enabled=true;
+        assert(D::OverviewCursorNext(m,0)==D::PCs[7]+4);
+        m.words.erase(0x7786f8);
+        assert(D::OverviewCursorNext(m,owner)==D::PCs[7]+4);
+    }
+    {
+        // Only an accepted A toggle becomes a remembered preference. Native
+        // exit restores gameplay mode 2; re-entry must still select mode 3.
+        const auto game=m.Alloc(0x170),other_game=m.Alloc(0x170);
+        for(auto g:{game,other_game}){m.words[g+0x13c]=0x0402;m.words[g+0x148]=0x44;}
+        assert(h.EntryZoom(m,game)==1);
+        h.RememberZoom(m,owner,game,3);const auto selected=m.words;
+        assert(h.EntryZoom(m,game)==3&&m.words==selected);
+        m.words[0x7786f8]=0x02011234; // native exit and other-tab state
+        assert(h.EntryZoom(m,game)==3&&h.EntryZoom(m,game)==3);
+        m.words[0x7786f8]=0x03011234; // temporary gameplay minimap overview
+        assert(h.EntryZoom(m,game)==3);
+        h.RememberZoom(m,owner,game,1);assert(h.EntryZoom(m,game)==1);
+        h.RememberZoom(m,owner,game,3);assert(h.EntryZoom(m,game)==3);
+        for(unsigned invalid:{0u,2u,4u})h.RememberZoom(m,owner,game,invalid);
+        assert(h.EntryZoom(m,game)==3);
+        for(U32 mode:{0x100u,0x10000u}) { // overworld and soaring cannot overwrite it
+            m.words[owner+0x78c]=mode;h.RememberZoom(m,owner,game,1);
+            assert(h.EntryZoom(m,game)==3);
+        }
+        m.words[owner+0x78c]=0;
+        assert(h.EntryZoom(m,other_game)==1&&h.EntryZoom(m,0)==1);
+        m.words[game+0x148]=0x45;assert(h.EntryZoom(m,game)==1); // unrelated scene
+        m.words[game+0x148]=0x44;m.words[game+0x13c]=0x0302;
+        assert(h.EntryZoom(m,game)==1);
+        m.words[game+0x13c]=0x0402;D::enabled=false;assert(h.EntryZoom(m,game)==1);
+        h.RememberZoom(m,owner,game,1);D::enabled=true;assert(h.EntryZoom(m,game)==3);
+        h.zoom_choice.reset();
+    }
     m.words[owner+0xc]=m.Layout("UpWorldMapBG");m.words[owner+0x1c]=m.Layout("UpWorldMapHud");
     std::vector<U32> groups;
     for(const char* n:{"icon_touch_direct","cursor_loupe_g","disp_no_map_g","disp_wing_g","item_set_base_g","slide_gauge_g","btn_place_name_g","btn_expansion_g","btn_reduction_g","btn_return_l","bb_map_area_g"})groups.push_back(m.Widget(n,80,60));
@@ -2491,8 +2574,8 @@ void DungeonMapChecks() {
         for(unsigned i=0;i<D::Count;++i)o.poses[i]={float(10+i),float(-20+i),.5f+float(i)*.1f};D::Apply(o);
         h.Capture(m,owner);assert(h.valid&&h.dungeon==dungeon);
         const auto before_skip=m.words;assert(h.SkipWorld(m,owner)==dungeon&&m.words==before_skip);
-        // A is the disabled native zoom action on both recognized map modes.
-        assert(D::FilterA(m,owner,0x403)==0x402u);
+        // A zoom is native in dungeons and remains disabled on the world map.
+        assert(D::FilterA(m,owner,0x403)==(dungeon?0x403u:0x402u));
         h.Pass(m,manager,4);
         assert(m.words[q[4]+0x844]==0&&m.words[q[5]+0x844]==1);
         assert(m.words[q[1]+0x844]==unsigned(dungeon)*2&&m.words[q[3]+0x844]==unsigned(dungeon)*2);
@@ -2832,6 +2915,43 @@ void CutsceneFovChecks() {
     m.words[game+0xa78]=4<<16;assert(C::ConfiguredFov(m,projection)==65);
     C::desired_fov=45;
 }
+void CursorInterpolationChecks() {
+    namespace L=MM3D::MessageLayout;namespace C=MM3D::CursorInterpolation;
+    Memory m;auto layout=m.Layout("CursorItemCollect"),pane=m.Widget("frame_def_pane00");
+    m.Children(layout+8,{pane});const auto geo=m.Alloc(0x80);m.words[pane+0x28]=geo;m.words[geo+4]=6;
+    const auto put=[&](U32 at,float f){m.words[at]=std::bit_cast<U32>(f);};
+    put(layout+8+0x134,1);put(pane+0x134,1);
+    for(unsigned r=0;r<3;++r)put(pane+0xe0+r*16+r*4,1);
+    put(pane+0xec,103.123f);put(pane+0xfc,50);put(geo+0x20,16);put(geo+0x24,16);
+    put(geo+0x28,.25f);put(geo+0x2c,.5f);put(geo+0x30,.125f);put(geo+0x34,.125f);
+    put(pane+0x110,1);put(pane+0x120,1);
+    const auto before=m.words;const auto panels=L::ReadCursors(m,layout);
+    assert(panels.size()==1&&m.words==before);
+    C::Values u{};u[10]={0,3,90,1};u[14]={0,3,90,1};
+    for(unsigned r=0;r<3;++r){u[11+r]=panels[0].transform[r];u[15+r]=u[11+r];}
+    u[15][0]+=30; // Same atlas, different pane in the same batch.
+    for(unsigned r=0;r<2;++r)u[90+r]=panels[0].uv[r];
+    C::Publish(10,99,panels);assert(C::Mask(10,99,u,12)==1);
+    assert(C::Mask(11,99,u,12)==1&&C::Mask(12,99,u,12)==0&&C::Mask(10,100,u,12)==0);
+    auto rounded=u;for(auto& row:rounded)for(float& f:row)f=std::bit_cast<float>(std::bit_cast<U32>(f)&~127u);
+    assert(C::Mask(10,99,rounded,12)==1);
+    auto wrong=u;wrong[90][1]+=.125f;assert(C::Mask(10,99,wrong,12)==0);
+    MM3D::InventoryInterpolation::Pose inv;inv.values=u;inv.rows.fill(true);inv.alpha=.75f;
+    inv.values[11][0]-=10;inv.values[15][0]-=10;C::Snap(inv,u,1);
+    assert(inv.values[11]==u[11]&&inv.values[15][0]==u[15][0]-10&&inv.alpha==.75f);
+    MM3D::FileSelectInterpolation::Pose file;file.count=2;file.x={1,2};file.y={3,4};file.alpha=.5f;file.rectangles.emplace();
+    C::Snap(file,u,1);assert(file.x[0]==u[11][0]&&file.x[1]==2&&file.y[0]==u[12][0]&&file.y[1]==4&&file.alpha==.5f);
+    assert((*file.rectangles)[0]==u[11]&&(*file.rectangles)[1]==u[12]&&(*file.rectangles)[2][0]==0);
+    MM3D::ItemSlideInterpolation::Pose item;item.count=2;item.x={1,2};C::Snap(item,u,1);
+    assert(item.x[0]==u[11][0]&&item.x[1]==2);
+    m.words[pane+0xd4]&=~1u;assert(L::ReadCursors(m,layout).empty());m.words=before;
+    m.Children(pane,{pane});assert(L::ReadCursors(m,layout).empty());m.words=before;
+    auto unrelated=m.Layout("MenuItem");m.Children(unrelated+8,{pane});assert(L::ReadCursors(m,unrelated).empty());
+    auto menu=m.Layout("FileSelect"),group=m.Widget("cursor_g"),art=m.Widget("file_plate");
+    m.Children(menu+8,{group,art});m.Children(group,{pane});put(group+0x134,1);
+    const auto file_panels=L::ReadCursors(m,menu);assert(file_panels.size()==1&&file_panels[0].source[1]==pane);
+    C::Publish(1,100,file_panels);assert(C::Mask(10,99,u,12)==0);
+}
 void SharedMessageChecks() {
     namespace L=MM3D::MessageLayout;namespace I=MM3D::MessageInterpolation;
     Memory m;auto layout=m.Layout("MessageWindow",0,0,0x500),all=m.Widget("all"),plate=m.Widget("plate"),pane=m.Widget("window_plate");
@@ -2978,6 +3098,7 @@ void GearPhotoPoseChecks() {
 
 int main(int argc,char** argv) {
     GearPhotoPoseChecks();
+    CursorInterpolationChecks();
     SharedMessageChecks();
     {
         // Captured low/scaled Gear tabs must start hidden but be visible
@@ -3099,6 +3220,15 @@ int main(int argc,char** argv) {
         assert(MM3D::SongList::CodeMatches(code));
         for(U32 at:{0x596c24u,0x596cb8u,0x596cbcu,0x594480u,0x596c20u,0x596cb4u,0x594484u,0x36e294u,0x175c30u,0x596cecu,0x596ce8u,0x596ff4u}) {
             U32 word=0;f.seekg(at-0x100000);f.read(reinterpret_cast<char*>(&word),4);assert(f);code.words[at]=word;
+        }
+        for(U32 at:MM3D::DungeonMap::PCs) {
+            U32 word=0;f.seekg(at-0x100000);f.read(reinterpret_cast<char*>(&word),4);assert(f);code.words[at]=word;
+        }
+        for(auto [at,expected]:MM3D::DungeonMap::ZoomGuards) {
+            U32 word=0;f.seekg(at-0x100000);f.read(reinterpret_cast<char*>(&word),4);assert(f&&word==expected);code.words[at]=word;
+        }
+        for(auto [at,expected]:MM3D::DungeonMap::OverviewCursorGuards) {
+            U32 word=0;f.seekg(at-0x100000);f.read(reinterpret_cast<char*>(&word),4);assert(f&&word==expected);code.words[at]=word;
         }
         assert(MM3D::DungeonMap::CodeMatches(code));
         code.words[MM3D::DungeonMap::PCs[0]]^=1;assert(!MM3D::DungeonMap::CodeMatches(code));
@@ -4182,4 +4312,5 @@ int main(int argc,char** argv) {
     BottomStripNavigationChecks();
     InventoryTransitionChecks();
     std::cout<<"Native menu signatures, routing, transforms/restoration and guarded paths passed.\n";
+    return 0;
 }

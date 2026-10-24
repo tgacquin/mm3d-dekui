@@ -10,7 +10,8 @@ namespace Pica::Shader::Generator::GLSL {
 
 class FragmentModule {
 public:
-    explicit FragmentModule(const FSConfig& config, const UserConfig& user, const Profile& profile);
+    explicit FragmentModule(const FSConfig& config, const UserConfig& user, const Profile& profile,
+                            bool hybrid = false);
     ~FragmentModule();
 
     /// Emits GLSL source corresponding to the provided pica fragment configuration
@@ -63,6 +64,8 @@ private:
 
     /// Writes the code to emulate the specified TEV stage
     void WriteTevStage(u32 index);
+    void DefineHybridHelpers();
+    void WriteHybridStages();
 
     void AppendProcTexShiftOffset(std::string_view v, Pica::TexturingRegs::ProcTexShift mode,
                                   Pica::TexturingRegs::ProcTexClamp clamp_mode);
@@ -87,6 +90,7 @@ private:
     const UserConfig& user;
     const Profile& profile;
     std::string out;
+    bool hybrid{};
     bool use_blend_fallback{};
     bool use_fragment_shader_interlock{};
     bool use_fragment_shader_barycentric{};

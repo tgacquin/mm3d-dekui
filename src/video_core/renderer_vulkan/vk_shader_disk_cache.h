@@ -39,6 +39,11 @@ public:
         const Pica::RegsInternal& regs);
 
     GraphicsPipeline* GetPipeline(const PipelineInfo& info);
+    std::pair<u64, Shader*> GetHybridShader(Pica::Shader::FSConfig config,
+                                          const Pica::Shader::UserConfig& user, bool atlas);
+    GraphicsPipeline* GetHybridPipeline(const PipelineInfo& info,
+                                       std::array<Shader*, MAX_SHADER_STAGES> shaders,
+                                       std::pair<u64, Shader*> fragment);
 
     u64 GetProgramID() const {
         return title_id;
@@ -350,6 +355,9 @@ private:
     std::unordered_set<u64> known_vertex_programs;
 
     std::unordered_map<u64, Shader> fragment_shaders;
+    std::unordered_map<u64, Shader> hybrid_shaders;
+    std::unordered_map<u64, std::unique_ptr<GraphicsPipeline>> hybrid_pipelines;
+    std::unordered_map<u64, std::pair<u64, Shader*>> hybrid_for_specialized;
 
     std::unordered_map<size_t, Shader> fixed_geometry_shaders;
     std::unordered_set<u64> known_geometry_shaders;

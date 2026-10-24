@@ -11,6 +11,7 @@
 #include "video_core/pica/shader_setup.h"
 #include "video_core/pica/shader_unit.h"
 #include "mm3d/glare_interpolation.h"
+#include "mm3d/dungeon_map_interpolation.h"
 #include "mm3d/screen_shrink.h"
 
 namespace MM3D::GpuInterpolation {
@@ -38,8 +39,11 @@ inline bool ScreenCopyDraw(const Pica::RegsInternal& regs,
 }
 // These screen passes need shaded outputs even in GPU mode. World effects use
 // input uploads instead. This does not change the user's renderer preference.
-inline bool NeedsShadedVertices(const Pica::RegsInternal& regs, Pica::ShaderSetup& setup) {
-    if((regs.pipeline.num_vertices!=72 && regs.pipeline.num_vertices!=4) ||
+inline bool NeedsShadedVertices(const Pica::RegsInternal& regs, Pica::ShaderSetup& setup,
+        std::uint64_t frame=0,std::uint32_t generation=0) {
+    const bool map=regs.pipeline.num_vertices>0 && regs.pipeline.num_vertices<=4096 &&
+        regs.pipeline.num_vertices%6==0 && setup.uniforms.f[3].w.ToFloat32()==1;
+    if((regs.pipeline.num_vertices!=72 && regs.pipeline.num_vertices!=4 && !map) ||
        setup.GetProgramCodeHash()!=0x89b1ab98da3d9241ULL ||
        setup.GetSwizzleDataHash()!=0x6f0b398b1fc186a9ULL)return false;
     CameraMidpoint::Matrix projection{},model=CameraMidpoint::Identity();
@@ -50,7 +54,12 @@ inline bool NeedsShadedVertices(const Pica::RegsInternal& regs, Pica::ShaderSetu
     GlareInterpolation::Tev tev{};const auto stages=regs.texturing.GetTevStages();
     for(unsigned i=0;i<6;++i)tev[i]={stages[i].sources_raw,stages[i].modifiers_raw,
         stages[i].ops_raw,stages[i].const_color,stages[i].scales_raw};
-    return GlareInterpolation::ScreenDraw(projection,model,tev);
+    // Only the dungeon's two small screen-space batches use shaded output
+    // interpolation in GPU mode. World geometry keeps the GPU vertex path.
+    if(map && DungeonMapInterpolation::ScreenDraw(setup.GetProgramCodeHash(),
+            setup.GetSwizzleDataHash(),regs.pipeline.num_vertices,projection,model,tev) &&
+       DungeonMapInterpolation::Current(frame,generation))return true;
+    return regs.pipeline.num_vertices==72 && GlareInterpolation::ScreenDraw(projection,model,tev);
 }
 // A bounded snapshot of shader inputs, without running a CPU vertex shader.
 // Cache ordering mirrors PICA's CPU path so the SAME effect decoders, topology

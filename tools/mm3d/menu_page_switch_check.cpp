@@ -211,4 +211,5 @@ int main(int argc,char** argv) {
         assert(CodeMatches(code));
     }
     std::cout<<"Gear/Masks/Items/Map routing, capture lifetime, animation scope and code guards passed.\n";
+    return 0;
 }

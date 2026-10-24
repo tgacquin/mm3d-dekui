@@ -205,8 +205,8 @@ def upgrade(root, rom, restoration):
                 if new != old:
                     changes[layout_migration.CONFIG] = new
             else:
-                changes[layout_migration.CONFIG] = (RESOURCES/'defaults/presentation.json').read_bytes()
-                retained = []
+                changes[layout_migration.CONFIG], retained = layout_migration.migrate(
+                    b'{"version":1}', layout_policy)
             changes[layout_migration.BASELINE] = layout_migration.baseline(layout_policy, retained)
             for relative, sha in layout_policy['retired_profiles'].items():
                 target = checked(user, relative)

@@ -71,7 +71,7 @@ target_link_libraries(mm3d_registry_tests PRIVATE mm3d_overlay video_core Qt6::C
 add_test(NAME mm3d_profile_registry COMMAND mm3d_registry_tests)
 
 add_executable(mm3d_vulkan_fixture vulkan_fixture.cpp pass_switch_fixture.cpp visibility_depth_fixture.cpp scene_effects_fixture.cpp)
-target_sources(mm3d_vulkan_fixture PRIVATE gpu_interpolation_fixture.cpp)
+target_sources(mm3d_vulkan_fixture PRIVATE gpu_interpolation_fixture.cpp hybrid_shader_fixture.cpp)
 target_link_libraries(mm3d_vulkan_fixture PRIVATE mm3d_overlay video_core tsl::robin_map Qt6::Core ${PLATFORM_LIBRARIES})
 # GPU fixture is explicit: CI machines without a Vulkan device should not silently skip a failure.
 
@@ -123,6 +123,15 @@ if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG)
 endif()
 add_test(NAME mm3d_native_inventory COMMAND mm3d_native_inventory_tests)
+
+add_executable(mm3d_dungeon_map_interpolation_tests ../../tools/mm3d/dungeon_map_interpolation_check.cpp)
+target_include_directories(mm3d_dungeon_map_interpolation_tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
+if(MSVC)
+    target_compile_options(mm3d_dungeon_map_interpolation_tests PRIVATE /UNDEBUG)
+else()
+    target_compile_options(mm3d_dungeon_map_interpolation_tests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME mm3d_dungeon_map_interpolation COMMAND mm3d_dungeon_map_interpolation_tests)
 
 add_executable(mm3d_camera_midpoint_tests camera_midpoint_tests.cpp)
 target_include_directories(mm3d_camera_midpoint_tests PRIVATE "${PROJECT_SOURCE_DIR}/src")

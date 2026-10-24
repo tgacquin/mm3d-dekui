@@ -20,7 +20,8 @@ class LayoutMigrationTests(unittest.TestCase):
         old=self.policy['previous'];new,held=self.apply(old)
         self.assertEqual(held,[])
         for k,v in self.policy['current'].items():
-            self.assertEqual(new[k],old[k] if k in self.policy['preserve_existing'] else v,k)
+            expected = old[k] if k in self.policy['preserve_existing'] else self.policy.get('existing_install_defaults', {}).get(k, v)
+            self.assertEqual(new[k],expected,k)
 
     def test_reported_deck_case_preserves_all_nonlayout_preferences(self):
         old=json.loads((Path(__file__).parent/'fixtures/beta2-upgraded-deck.json').read_text())
@@ -107,9 +108,13 @@ class LayoutMigrationTests(unittest.TestCase):
         old=dict(self.policy['previous'])
         new,_=self.apply(old)
         self.assertFalse(new['stick_click_controls'])
-        old['stick_click_controls']=True
-        new,_=self.apply(old)
-        self.assertTrue(new['stick_click_controls'])
+        self.assertTrue(self.policy['current']['stick_click_controls'])
+        for enabled in (False, True):
+            old['stick_click_controls']=enabled
+            new,_=self.apply(old)
+            self.assertEqual(new['stick_click_controls'],enabled)
+            again,_=self.apply(new)
+            self.assertEqual(again,new)
 
     def test_serialized_centered_mask_description_upgrades(self):
         for source in (self.policy['previous'], self.policy['current'], {}):

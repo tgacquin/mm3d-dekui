@@ -3,6 +3,7 @@
 // Refer to the license.txt file included.
 
 #pragma once
+#include "video_core/shader/generator/hybrid_fs_config.h"
 
 #include <bitset>
 
@@ -89,6 +90,9 @@ public:
     void UseFragmentShader(const Pica::RegsInternal& regs, const Pica::Shader::UserConfig& user,
                            bool atlas = false);
 
+    bool HybridEnabled() const { return hybrid_enabled; }
+    const Pica::Shader::Hybrid::Uniforms& HybridUniforms() const { return hybrid_uniforms; }
+
     /// Gets the current program ID
     u64 GetProgramID() const {
         return current_program_id;
@@ -161,6 +165,11 @@ private:
 
     Shader trivial_vertex_shader;
 
+    bool hybrid_enabled{};
+    bool hybrid_force{}; // Developer equivalence testing, never enabled by normal settings.
+    Pica::Shader::Hybrid::Uniforms hybrid_uniforms{};
+    std::optional<std::pair<u64, Shader*>> hybrid_fragment;
+    u64 hybrid_draws{}, hybrid_cold_waits{};
     u64 current_program_id{0};
     std::vector<std::shared_ptr<ShaderDiskCache>> disk_caches;
     std::shared_ptr<ShaderDiskCache> curr_disk_cache{};

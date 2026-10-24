@@ -89,6 +89,56 @@ class ResourceUpgradeTests(unittest.TestCase):
         self.assertEqual((backup/'backup'/existing).read_bytes(), self.old['use.gmsg'])
         self.assertNotIn('resource_version', json.loads((backup/'backup'/upgrade.READY).read_bytes()))
 
+    def test_control_defaults_preserve_existing_installations(self):
+        defaults = json.loads((setup_game_folder.RESOURCES/'defaults/presentation.json').read_text())
+        self.assertTrue(defaults['stick_click_controls'])
+        self.assertEqual(defaults['player_hud_base_scale'], 2)
+        self.assertEqual(defaults['player_hud_scale'], 0)
+        self.keep.pop(upgrade.layout_migration.CONFIG)
+        with self.builders():
+            for revision in range(upgrade.layout_migration.VERSION + 1):
+                for choice in (None, False, True):
+                    with self.subTest(revision=revision, choice=choice):
+                        original = dict(defaults, song_list_x=72.5, player_hud_scale=3,
+                                        player_hud_magic_width=1.7, notebook_buttons_scale=1.25,
+                                        notebook_buttons_icon_scale=.75)
+                        original.pop('player_hud_base_scale')
+                        if choice is None:
+                            original.pop('stick_click_controls')
+                        else:
+                            original['stick_click_controls'] = choice
+                        raw = (json.dumps(original, indent=2)+'\n').encode()
+                        self.put(upgrade.layout_migration.CONFIG, raw)
+                        ready = json.loads((self.user/upgrade.READY).read_bytes())
+                        ready['layout_version'] = revision
+                        self.put(upgrade.READY, json.dumps(ready).encode())
+                        self.run_upgrade()
+                        actual = json.loads((self.user/upgrade.layout_migration.CONFIG).read_bytes())
+                        for key, value in original.items():
+                            self.assertEqual(actual[key], value, key)
+                        # Current profiles can leave the key absent: the C++
+                        # loader uses false for old profiles without this key.
+                        self.assertEqual(actual.get('stick_click_controls', False), bool(choice))
+                        self.assertEqual(actual.get('player_hud_base_scale', 0), 0)
+                        if revision == upgrade.layout_migration.VERSION:
+                            self.assertEqual((self.user/upgrade.layout_migration.CONFIG).read_bytes(), raw)
+                        before = self.snapshot()
+                        self.run_upgrade()
+                        self.assertEqual(before, self.snapshot())
+                        self.assert_kept()
+
+    def test_legacy_install_without_config_keeps_original_controls(self):
+        self.keep.pop(upgrade.layout_migration.CONFIG)
+        (self.user/upgrade.layout_migration.CONFIG).unlink()
+        with self.builders():
+            self.run_upgrade()
+            actual = json.loads((self.user/upgrade.layout_migration.CONFIG).read_bytes())
+            self.assertFalse(actual['stick_click_controls'])
+            before = self.snapshot()
+            self.run_upgrade()
+            self.assertEqual(before, self.snapshot())
+        self.assert_kept()
+
     def test_retired_sky_never_triggers_extraction(self):
         with self.builders() as (_, extract):
             self.run_upgrade()

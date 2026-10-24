@@ -56,6 +56,20 @@ struct Hook {
         return Pointer(p,0x794)&&((m.Read(0x656b0c)==p&&m.Read(p)==GearVtable)||
             (m.Read(0x656b14)==p&&m.Read(p)==MapVtable&&Byte(m,p+0x78e)==0));
     }
+    template<class M> static bool HideGameplayMap(M& m,U32 g) {
+        // Recalled Map/Gear capture while the gameplay screen is still current.
+        // Its lower-screen map draw is normally harmless, but our top-screen
+        // relocation would bake it into the shared pause screenshot. Suppress
+        // that draw from the pending request through the final pause handoff.
+        if(!Enabled()||!g||m.Read(0x1b03bc)!=ScreenContext||Game(m,ScreenContext)!=g)return false;
+        const auto current=m.Read(ScreenContext+8),pending=m.Read(ScreenContext+12);
+        if(!current||!pending)return false;
+        const auto pause_page=[&](U32 p) {
+            const auto type=MenuMemory::Hook{}.Page(m,p);
+            return type&&(type!=MapVtable||Byte(m,p+0x78e)==0);
+        };
+        return pause_page(*current)||pause_page(*pending);
+    }
     template<class M> static bool Ready(M& m,U32 g) {
         auto graphics=m.Read(0x66889c),t=m.Read(g+0x11018);
         // Native 0x1bdf28 checks the global capture manager. game+0x100 is a

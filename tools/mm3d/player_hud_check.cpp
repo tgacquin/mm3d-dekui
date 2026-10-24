@@ -6,6 +6,20 @@
 #include "mm3d/player_hud.h"
 namespace P = MM3D::PlayerHud;
 namespace H = MM3D::HudAdjustments;
+void MenuIsolationChecks() {
+    for(const char* name:{"MenuMapDungeon","UpWorldMapHud","UpWorldMapBG","MenuQuestlist",
+                         "MenuSchedule","UpSchedule","UpQuestlist","UpEventMap","MessageWindow"}) {
+        Memory m;P::Hook hook;const auto layout=m.Layout(name);
+        const auto widget=m.Widget("heart_status",18,37),geometry=m.Alloc(0x80);
+        m.Children(layout+8,{widget});m.words[widget+0x28]=geometry;m.words[geometry+4]=6;
+        m.words[geometry+0x20]=std::bit_cast<U32>(60.f);m.words[geometry+0x24]=std::bit_cast<U32>(20.f);
+        const auto original=m.words;
+        auto options=H::FreshDefaults();options.overall=4;options.magic_width=2;
+        options.opacity=.3f;options.top=7;options.x[H::Hearts]=31;H::Apply(options);
+        hook.Begin(m,layout);assert(m.words==original);hook.End(m);assert(m.words==original);
+    }
+    H::Apply({});
+}
 void OpacityChecks() {
     for(float opacity:{0.f,.5f,1.f}) {
         Memory m;P::Hook hook;auto hud=m.Layout("Hud2"),group=m.Widget("heart_status");
@@ -23,6 +37,7 @@ void OpacityChecks() {
     H::Apply({});
 }
 void MagicHeightChecks() {
+    for(float width:{.5f,1.f,3.f})
     for(float installed:{.5f,1.f,2.f})for(float target:{.5f,1.f,1.5f,2.f})
     for(int height_steps:{-10,0,10})for(int steps:{-10,0,10})for(float fill_width:{0.f,23.f,80.f}) {
         Memory m;P::Hook hook;auto hud=m.Layout("Hud2"),group=m.Widget("magic_gauge_g",10,40);
@@ -37,11 +52,12 @@ void MagicHeightChecks() {
         };
         auto frame=pane("gauge_base",80),fill=pane("gauge_pane",fill_width);
         m.Children(hud+8,{group});m.Children(group,{frame,fill});auto before=m.words;
-        H::Options o;o.overall=steps;o.elements[H::Magic]=steps;o.top=3;o.magic_height_steps=height_steps;H::Apply(o);
+        H::Options o;o.overall=steps;o.elements[H::Magic]=steps;o.top=3;o.magic_height_steps=height_steps;o.magic_width=width;H::Apply(o);
         P::ApplyMagicHeight(target);hook.Begin(m,hud);const float scale=H::Scale(H::Magic);
         for(auto n:{frame,fill}) {
             assert(std::abs(std::bit_cast<float>(m.words[n+0xf4])-target*H::Factor(height_steps)*scale)<.0001f);
-            assert(std::abs(std::bit_cast<float>(m.words[n+0xe0])-scale)<.0001f);
+            assert(std::abs(std::bit_cast<float>(m.words[n+0xe0])-scale*width)<.0001f);
+            assert(std::abs(std::bit_cast<float>(m.words[n+0xec])-10.f)<.0001f);
             const float top=std::bit_cast<float>(m.words[n+0xfc])-4*target*H::Factor(height_steps)*scale;
             assert(std::abs(top-(43-4*installed))<.0001f);
             assert(m.words[n+0x134]==before.at(n+0x134));
@@ -142,7 +158,7 @@ void PlayerHudChecks() {
         m.words[n+0x134]=std::bit_cast<U32>(.4f);return n;
     };
     auto hearts=quad("heart_status",10,15,100,20),magic=quad("magic_gauge_g",10,40,80,10),
-         rupees=quad("rupee_g",12,200,32,20),keys=quad("key_g",12,180,20,16),dpad=m.Widget("hud_dpad"),
+         rupees=quad("rupee_g",12,200,32,20),keys=quad("key_g",10,180,20,16),dpad=m.Widget("hud_dpad"),
          buttons=quad("item_icon_set",300,10,80,60),other=quad("unrelated",45,80,40,50);
     auto embedded=m.Layout("Dpad"),dpad_quad=quad("pad",15,60,40,40);
     m.words[dpad+0x20]=embedded;m.Children(embedded+8,{dpad_quad});
@@ -150,16 +166,21 @@ void PlayerHudChecks() {
     // Hidden artwork is deliberately far outside the actual button circles.
     auto circle=quad("btn_x_g",300,10,80,60),hidden=quad("inactive_art",900,-200,400,300);
     m.Children(buttons,{circle,hidden});
+    // Native number columns align, although the key icon extends farther left.
+    auto rupee_digit=quad("rank_a",40,200,4,10),key_digit=quad("num_key",40,180,4,10);
+    m.Children(rupees,{rupee_digit});m.Children(keys,{key_digit});
     auto baseline=m.words;
     H::Apply({});hook.Begin(m,hud);assert(m.words==baseline);hook.End(m);assert(m.words==baseline);
     const auto f=[&](U32 n,U32 off){return std::bit_cast<float>(m.words[n+off]);};
-    for(int step:{-10,-3,0,4,10}) {
+    for(int step:{-10,-3,0,2,4,10}) {
         H::Options o;o.overall=step;o.top=7;o.bottom=9;o.elements[H::Magic]=2;H::Apply(o);
         hook.Begin(m,hud);const float scale=H::Factor(step);
         assert(f(hearts,0xec)==10&&f(hearts,0xfc)==22);
         assert(std::abs(f(hearts,0xe0)-scale)<.0001f);
         assert(std::abs(f(magic,0xe0)-scale*1.1f)<.0001f);
         assert(std::abs(f(rupees,0xfc)+20*scale-211)<.0001f&&f(rupees,0xec)==12);
+        assert(std::abs(f(key_digit,0xec)-f(rupee_digit,0xec))<.0001f);
+        assert(std::abs(f(rupee_digit,0xfc)-f(key_digit,0xfc)-20*scale)<.0001f);
         assert(std::abs(f(buttons,0xec)+80*scale-380)<.0001f&&f(buttons,0xfc)==17);
         assert(std::abs(f(dpad_quad,0xec)-(10+5*scale))<.0001f);
         assert(std::abs(f(dpad_quad,0xfc)-(22+46*scale))<.0001f);
@@ -169,6 +190,12 @@ void PlayerHudChecks() {
         for(auto n:{hearts,magic,rupees,dpad_quad,buttons})assert(f(n,0x134)==.4f);
         auto adjusted=m.words;hook.Begin(m,embedded);assert(m.words==adjusted);hook.End(m);assert(m.words==adjusted);
         hook.End(m);assert(m.words==baseline);
+        // Moving the same scale into the editor baseline must preserve every
+        // vertex, anchor, gap, count and unrelated widget exactly.
+        o.base_scale=step;o.overall=0;H::Apply(o);hook.Begin(m,hud);
+        assert(m.words==adjusted);hook.End(m);assert(m.words==baseline);
+        o.overall=3;o.x[H::Hearts]=9;H::ResetPlayer(o);
+        assert(o.base_scale==step&&o.overall==0&&o.x[H::Hearts]==0);
     }
     H::Options positioned;positioned.overall=4;positioned.top=7;positioned.bottom=9;
     H::Apply(positioned);hook.Begin(m,hud);auto scaled=m.words;hook.End(m);
@@ -188,12 +215,14 @@ void PlayerHudChecks() {
         H::Options o;o.elements[H::Rupees]=user_scale;o.bottom=3;o.x[H::Rupees]=4;o.y[H::Rupees]=2;H::Apply(o);
         hook.Begin(m,hud);
         const float scale=editor_scale*H::Factor(user_scale);
-        for(auto [n,height,bottom]:std::array<std::tuple<U32,float,float>,2>{{{rupees,20,220},{keys,16,196}}}) {
+        for(auto [n,x,y]:std::array<std::tuple<U32,float,float>,2>{{{rupees,12,200},{keys,10,180}}}) {
             assert(std::abs(f(n,0xe0)-scale)<.0001f&&std::abs(f(n,0xf4)-scale)<.0001f);
-            assert(std::abs(f(n,0xec)-23)<.0001f);
-            assert(std::abs(f(n,0xfc)+height*scale-(bottom-12))<.0001f);
+            assert(std::abs(f(n,0xec)-(23+(x-12)*scale))<.0001f);
+            assert(std::abs(f(n,0xfc)-(208+(y-220)*scale))<.0001f);
             assert(f(n,0x134)==.4f);
         }
+        assert(std::abs(f(key_digit,0xec)-f(rupee_digit,0xec))<.0001f);
+        assert(std::abs(f(rupee_digit,0xfc)-f(key_digit,0xfc)-20*scale)<.0001f);
         assert(f(hearts,0xe0)==1&&f(buttons,0xe0)==1);
         hook.End(m);assert(m.words==baseline);
         H::Apply({});hook.Begin(m,hud);
@@ -259,22 +288,43 @@ void IndividualButtonChecks() {
 }
 void HideMinimapChecks() {
     namespace N=MM3D::NativeMinimap;
+    for(bool pause_capture:{false,true}) {
     Memory m;N::Hook hook;
     for(unsigned q=0;q<8;++q){m.words[N::Count(q)]=0;m.words[N::Pointer(q,0)]=0;m.words[N::Priority(q,0)]=0;}
     auto map=m.Alloc(0x400),radar=m.Alloc(0x400),other=m.Alloc(0x400),top=m.Alloc(0x400);
     m.words[0x6890ec]=map;m.words[0x6890f0]=0;m.words[0x727970+0x828]=radar;
     m.words[N::Count(4)]=1;m.words[N::Pointer(4,0)]=top;m.words[N::Priority(4,0)]=5;
     m.words[N::Count(6)]=1;m.words[N::Pointer(6,0)]=other;m.words[N::Priority(6,0)]=7;
-    H::Options o;o.hide_minimap=true;H::Apply(o);hook.Begin(m,0,true);
+    H::Options o;o.hide_minimap=!pause_capture;H::Apply(o);hook.Begin(m,0,true,0,pause_capture);
     m.words[N::Count(6)]=3;
     m.words[N::Pointer(6,0)]=map;m.words[N::Priority(6,0)]=1;
     m.words[N::Pointer(6,1)]=other;m.words[N::Priority(6,1)]=7;
     m.words[N::Pointer(6,2)]=radar;m.words[N::Priority(6,2)]=9;
+    for(U32 object:{map,radar}){m.words[object+0x2c4]=64;m.words[object+0x2c8]=12;}
     auto before=m.words;hook.End(m,0,true,.36f,.85f,400);
+    assert(H::hide_minimap==!pause_capture); // transient suppression never changes preferences
+    assert(m.words[map+0x2c8]==0&&m.words[radar+0x2c8]==0);
     assert(m.words[N::Count(6)]==1&&m.words[N::Pointer(6,0)]==other&&m.words[N::Priority(6,0)]==7);
     assert(m.words[N::Count(4)]==1&&m.words[N::Pointer(4,0)]==top);
-    for(auto [address,value]:before)if(address!=N::Count(6)&&address!=N::Pointer(6,0)&&address!=N::Priority(6,0))assert(m.words[address]==value);
+    for(auto [address,value]:before)if(address!=N::Count(6)&&address!=N::Pointer(6,0)&&address!=N::Priority(6,0)&&address!=map+0x2c8&&address!=radar+0x2c8)assert(m.words[address]==value);
+    // Hidden gameplay frames must not accumulate overview geometry. Opening
+    // the pause map next appends at index zero, with its own marker scale.
+    for(unsigned frame=0;frame<3;++frame) {
+        hook.Begin(m,0,true,0,pause_capture);
+        m.words[N::Count(6)]=3;
+        m.words[N::Pointer(6,1)]=map;m.words[N::Priority(6,1)]=1;
+        m.words[N::Pointer(6,2)]=radar;m.words[N::Priority(6,2)]=9;
+        m.words[map+0x2c8]+=4;m.words[radar+0x2c8]+=8;
+        hook.End(m,0,true,.36f,.85f,400);
+        assert(m.words[map+0x2c8]==0&&m.words[radar+0x2c8]==0);
+    }
+    m.words[radar+0x2c8]+=3;assert(m.words[radar+0x2c8]==3);
+    // Invalid second object must not partially discard the first object.
+    m.words=before;m.words[radar+0x2c8]=65;const auto invalid=m.words;
+    hook.armed=true;hook.End(m,0,true,.36f,.85f,400);assert(m.words==invalid);
+    hook.Begin(m,0,true);assert(!hook.suppress_draw); // normal gameplay resumes immediately
     H::Apply({});assert(!H::hide_minimap);
+    }
 }
 void PlayerMinimapChecks() {
     namespace N=MM3D::NativeMinimap;
@@ -350,13 +400,18 @@ void PlayerMagicShadowChecks() {
     auto sp=(m.Alloc(0x6000)+0x6000)&~7u;auto before=m.words;
     P::Hook player;
     std::array<float,4> original{};
-    for(float height:{.5f,1.f,2.f})for(int step:{0,10}) {
+    for(float width:{.5f,1.f,3.f})for(float height:{.5f,1.f,2.f})for(int step:{0,10}) {
         P::ApplyMagicHeight(height);
-        H::Options o;o.overall=step;o.top=step?7:0;H::Apply(o);player.Begin(m,hud);
+        H::Options o;o.overall=step;o.top=step?7:0;o.magic_width=width;H::Apply(o);player.Begin(m,hud);
         const auto root=h.Root(m,hud,sp);assert(root!=hud+8);
         const auto f=[&](U32 at){return std::bit_cast<float>(m.words[at]);};
         for(auto pane:panes)assert(std::abs(f(pane+0x134)-.42f)<.0001f);
         assert(std::abs(f(root+0x200+0x134)-.6f)<.0001f);
+        // Both horizontal border strips span the same extended background.
+        for(U32 node:{root+0x400,root+0x600}) {
+            assert(std::abs(f(node+0xec)-10.f)<.0001f);
+            assert(std::abs(f(node+0x140+0x20)-80.f*width*H::Factor(step))<.0001f);
+        }
         // No shadow geometry lies inside the now-translucent meter.
         const float bar_bottom=f(panes[1]+0xfc)+9*f(panes[1]+0xf4);
         for(unsigned layer=0;layer<4;++layer) {
@@ -443,4 +498,4 @@ void CarrotChecks() {
     }
     P::ApplyCarrots({});H::Apply({});hook.Begin(m,hud);assert(m.words==original);hook.End(m);
 }
-int main(){BannerChecks();OpacityChecks();MagicHeightChecks();TimerAnchorChecks();TatlAnchorChecks();CarrotChecks();IndividualButtonChecks();HideMinimapChecks();HeartSpacingChecks();PlayerHudChecks();PlayerMagicShadowChecks();PlayerMinimapChecks();SmallGameplayMapChecks();std::cout<<"Player HUD checks passed\n";}
+int main(){MenuIsolationChecks();BannerChecks();OpacityChecks();MagicHeightChecks();TimerAnchorChecks();TatlAnchorChecks();CarrotChecks();IndividualButtonChecks();HideMinimapChecks();HeartSpacingChecks();PlayerHudChecks();PlayerMagicShadowChecks();PlayerMinimapChecks();SmallGameplayMapChecks();std::cout<<"Player HUD checks passed\n";}

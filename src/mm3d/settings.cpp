@@ -53,12 +53,34 @@ bool Settings::Load(const QString& path) {
         value("world_map_native_zoom_scale",1,.1f,3)};
     world_map_zoom_prompt={value("world_map_zoom_prompt_x",0,-400,400),value("world_map_zoom_prompt_y",0,-240,240),
         value("world_map_zoom_prompt_scale",.8f,.25f,2)};
+    dungeon_map_move_prompt={value("dungeon_map_move_prompt_x",0,-400,400),
+        value("dungeon_map_move_prompt_y",-44,-240,240),value("dungeon_map_move_prompt_scale",.69f,.25f,2)};
+    dungeon_map_zoom_prompt={value("dungeon_map_zoom_prompt_x",0,-400,400),
+        value("dungeon_map_zoom_prompt_y",-28,-240,240),value("dungeon_map_zoom_prompt_scale",.69f,.25f,2)};
+    // The old dungeon hints borrowed Notebook scale/icon scale and the
+    // difference between its two Y values. Notebook X never affected them.
+    // Fall back only for missing keys; saving makes the map values independent.
+    dungeon_map.prompts={true,value("dungeon_map_prompts_x",0,-400,400),
+        value("dungeon_map_prompts_y",0,-240,240),
+        value("dungeon_map_prompts_scale",notebook_live.prompt_scale,.5f,2),
+        value("dungeon_map_prompts_icon_scale",notebook_live.prompt_icon_scale,.5f,2),
+        value("dungeon_map_prompts_spacing",notebook_live.prompt_y-notebook_live.map_prompt_y,-480,480)};
+    // New global adjustments start neutral; retain every existing local pose.
+    dungeon_map.prompt_group={value("dungeon_map_buttons_x",0,-400,400),
+        value("dungeon_map_buttons_y",0,-240,240),value("dungeon_map_buttons_scale",1,.5f,2),
+        value("dungeon_map_buttons_icon_scale",1,.5f,2)};
     dungeon_map.enabled=object.value("dungeon_map_top").toBool(true);
     dungeon_map.side_panels=object.value("dungeon_map_side_panels").toBool(true);
     dungeon_map.top_strip=object.value("dungeon_map_top_strip").toBool(true);
     dungeon_map.top_panel={value("dungeon_map_top_panel_x",0,-1024,1024),value("dungeon_map_top_panel_y",0,-480,480),
         value("dungeon_map_top_panel_scale",.3125f,.1f,3)};
     dungeon_map.panel_darkness=value("dungeon_map_panel_darkness",0,0,1);
+    dungeon_map.arrow_scale=value("dungeon_map_arrows_scale",1,.1f,3);
+    for(unsigned i=0;i<4;++i) {
+        const auto key=QString("dungeon_map_arrow_%1_").arg(DungeonMap::ArrowNames[i]);
+        dungeon_map.arrow_offsets[i]={value((key+"x").toUtf8().constData(),0,-800,800),
+            value((key+"y").toUtf8().constData(),0,-480,480)};
+    }
     for(unsigned i=0;i<2;++i) {
         const auto key=QString("dungeon_map_panel_%1_").arg(i);const auto d=DungeonMap::Options{}.panels[i];
         dungeon_map.panels[i]={value((key+"x").toUtf8().constData(),d.x,-512,512),
@@ -298,6 +320,10 @@ bool Settings::Load(const QString& path) {
     player_hud.heart_spacing=int(value("player_hud_heart_spacing",0,
         -HudAdjustments::HeartSpacingLimit,HudAdjustments::HeartSpacingLimit));
     player_hud.magic_height_steps=int(value("player_hud_magic_height",0,-10,10));
+    player_hud.magic_width=value("player_hud_magic_width",1.f,.5f,3.f);
+    // Existing profiles already encode their chosen size in player_hud_scale.
+    // Do not apply the new-install baseline on top of it.
+    player_hud.base_scale=int(value("player_hud_base_scale",0,-10,10));
     player_hud.overall=int(value("player_hud_scale",0,-10,10));
     player_hud.top=int(value("player_hud_top_padding",0,0,40));
     player_hud.bottom=int(value("player_hud_bottom_padding",0,0,40));
@@ -337,6 +363,7 @@ bool Settings::Load(const QString& path) {
     dialogue_indicator_y=value("dialogue_indicator_y",0.f,-64.f,64.f);
     double_prices = object.value("double_prices").toBool(false);
     price_multiplier = std::clamp(object.value("price_multiplier").toInt(2),2,3);
+    // Existing profiles without this setting keep the original controls.
     stick_click_controls = object.value("stick_click_controls").toBool(false);
     single_screen_text = object.value("single_screen_text").toBool(true);
     fix_bloom = object.value("fix_bloom").toBool(true);
@@ -460,6 +487,8 @@ bool Settings::Save(const QString& path) const {
     object.insert("player_hud_hide_menu_prompts",player_hud.hide_menu_prompts);
     object.insert("player_hud_heart_spacing",player_hud.heart_spacing);
     object.insert("player_hud_magic_height",player_hud.magic_height_steps);
+    object.insert("player_hud_magic_width",player_hud.magic_width);
+    object.insert("player_hud_base_scale",player_hud.base_scale);
     object.insert("player_hud_scale",player_hud.overall);
     object.insert("player_hud_top_padding",player_hud.top);
     object.insert("player_hud_bottom_padding",player_hud.bottom);
@@ -500,9 +529,24 @@ bool Settings::Save(const QString& path) const {
     object.insert("world_map_native_zoom_x",world_map_native_zoom.x);
     object.insert("world_map_native_zoom_y",world_map_native_zoom.y);
     object.insert("world_map_native_zoom_scale",world_map_native_zoom.scale);
+    object.insert("dungeon_map_move_prompt_x",dungeon_map_move_prompt.x);
+    object.insert("dungeon_map_move_prompt_y",dungeon_map_move_prompt.y);
+    object.insert("dungeon_map_move_prompt_scale",dungeon_map_move_prompt.scale);
+    object.insert("dungeon_map_zoom_prompt_x",dungeon_map_zoom_prompt.x);
+    object.insert("dungeon_map_zoom_prompt_y",dungeon_map_zoom_prompt.y);
+    object.insert("dungeon_map_zoom_prompt_scale",dungeon_map_zoom_prompt.scale);
     object.insert("world_map_zoom_prompt_x",world_map_zoom_prompt.x);
     object.insert("world_map_zoom_prompt_y",world_map_zoom_prompt.y);
     object.insert("world_map_zoom_prompt_scale",world_map_zoom_prompt.scale);
+    object.insert("dungeon_map_prompts_x",dungeon_map.prompts.x);
+    object.insert("dungeon_map_prompts_y",dungeon_map.prompts.y);
+    object.insert("dungeon_map_prompts_scale",dungeon_map.prompts.scale);
+    object.insert("dungeon_map_prompts_icon_scale",dungeon_map.prompts.icon_scale);
+    object.insert("dungeon_map_prompts_spacing",dungeon_map.prompts.spacing);
+    object.insert("dungeon_map_buttons_x",dungeon_map.prompt_group.x);
+    object.insert("dungeon_map_buttons_y",dungeon_map.prompt_group.y);
+    object.insert("dungeon_map_buttons_scale",dungeon_map.prompt_group.scale);
+    object.insert("dungeon_map_buttons_icon_scale",dungeon_map.prompt_group.icon_scale);
     object.insert("dungeon_map_top",dungeon_map.enabled);
     object.insert("dungeon_map_side_panels",dungeon_map.side_panels);
     object.insert("dungeon_map_top_strip",dungeon_map.top_strip);
@@ -510,6 +554,12 @@ bool Settings::Save(const QString& path) const {
     object.insert("dungeon_map_top_panel_y",dungeon_map.top_panel.y);
     object.insert("dungeon_map_top_panel_scale",dungeon_map.top_panel.scale);
     object.insert("dungeon_map_panel_darkness",dungeon_map.panel_darkness);
+    object.insert("dungeon_map_arrows_scale",dungeon_map.arrow_scale);
+    for(unsigned i=0;i<4;++i) {
+        const auto key=QString("dungeon_map_arrow_%1_").arg(DungeonMap::ArrowNames[i]);
+        object.insert(key+"x",dungeon_map.arrow_offsets[i][0]);
+        object.insert(key+"y",dungeon_map.arrow_offsets[i][1]);
+    }
     for(unsigned i=0;i<2;++i) {
         const auto key=QString("dungeon_map_panel_%1_").arg(i);const auto p=dungeon_map.panels[i];
         object.insert(key+"x",p.x);object.insert(key+"y",p.y);object.insert(key+"scale",p.scale);

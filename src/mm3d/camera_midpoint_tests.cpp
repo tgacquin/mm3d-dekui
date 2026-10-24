@@ -1437,6 +1437,45 @@ int main() {
         bad=make(200,.5f);bad[0][0][0]=std::numeric_limits<float>::infinity();
         Check(!S::Decode(bad,order),"nonfinite explosion rejected");
         h.Reset();Check(!h.Apply(9,key,*a),"ring reset clears history");
+        const auto landing = [&](float size, float alpha) {
+            auto vertices = make(size, alpha, 510);
+            for (unsigned k = 0; k < 4; ++k) {
+                vertices[k][0][1] = 105;
+                vertices[k][0][2] += 2130;
+                vertices[k][1] = {.135332525f, .118415952f, .118415952f, alpha};
+            }
+            return vertices;
+        };
+        a = S::Decode(landing(108.8f, 150.f/255), order);
+        b = S::Decode(landing(120, 129.f/255), order);
+        Check(a && b, "captured Skulltula landing rings recognized");
+        h.Reset();
+        Check(!h.Apply(1, key, *a), "landing ring first frame seeds");
+        half = h.Apply(2, key, *b);
+        Check(half && S::Near(half->front().vertices[0][0][0], 510-57.2f) &&
+              S::Near(half->front().vertices[0][1][3], 139.5f/255),
+              "landing ring expansion and fade interpolate");
+        for (unsigned k = 0; k < 4; ++k) {
+            Check(half->front().vertices[k][2] == b->front().vertices[k][2],
+                  "landing ring UVs preserved");
+            for (unsigned c = 0; c < 3; ++c)
+                Check(half->front().vertices[k][1][c] == b->front().vertices[k][1][c],
+                      "landing ring tint preserved");
+        }
+        a = S::Decode(landing(140.32f, 45.f/255), order);
+        b = S::Decode(landing(140.32f, 24.f/255), order);
+        h.Reset();h.Apply(10, key, *a);
+        Check(h.Apply(11, key, *b).has_value(), "landing ring final stationary fade interpolates");
+        Check(!h.Apply(13, key, *b), "landing ring capture gaps do not borrow history");
+        Check(!h.Apply(14, {1,3}, *b), "landing ring scene changes clear history");
+        Check(!S::Compatible(a->front(), b->front()), "landing ring opacity reset rejected");
+        bad = landing(120, .5f);
+        for (auto& vertex : bad) vertex[1][0] = .2f;
+        Check(!S::Decode(bad, order), "unrelated brown particle tint rejected");
+        bad = landing(120, .5f);
+        for (auto& vertex : bad) std::swap(vertex[0][1], vertex[0][2]);
+        Check(!S::Decode(bad, order), "upright brown sprites rejected");
+        Check(!S::Decode(landing(300, .5f), order), "oversized brown ground sprites rejected");
     }
 
     {

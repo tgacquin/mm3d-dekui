@@ -11,12 +11,13 @@ inline constexpr std::array Entries{
     Entry{"Choose","Choisir","Elegir"}, Entry{"Return","Retour","Volver"},
     Entry{"Equip to I","Assigner I","Asignar a I"}, Entry{"Equip to II","Assigner II","Asignar a II"},
     Entry{"Items","Inventaire","Inventario"}, Entry{"Map","Carte","Mapa"},
-    Entry{"Zoom In","Zoom +","Acercar"}, Entry{"Zoom Out","Zoom -","Alejar"},
+    Entry{"Zoom in","Zoom +","Acercar"}, Entry{"Zoom out","Zoom -","Alejar"},
     Entry{"View schedule","Voir horaires","Ver horarios"}, Entry{"View events","Voir l'historique","Ver eventos"},
     Entry{"View map","Carte","Mapa"}, Entry{"Set alarm","Alarme","Alarma"},
     Entry{"Schedule details","Détails horaires","Detalles horario"},
     Entry{"Event details","Détails","Detalles suceso"},
     Entry{"Songs","Chants","Canciones"}, Entry{"Cancel","Annuler","Cancelar"},
+    Entry{"Move map","Déplacer la carte","Mover mapa"},
     Entry{"Back","Retour","Volver"}, Entry{"Move cursor","Déplacer","Mover cursor"},
 };
 inline std::string_view Translate(unsigned language,std::string_view english) {

@@ -10,14 +10,18 @@ namespace MM3D::EffectCapture {
 bool Export(const std::string& path) {
     std::vector<Draw> samples;std::vector<Fill> clear_samples;bool capped,geometry_capped,fill_capped;
     std::vector<LayoutReplay> replay_samples;std::vector<Presentation> presentation_samples;
-    std::vector<MapReplay> map_samples;
+    std::vector<MapReplay> map_samples;std::vector<MapShadow> shadow_samples;
     {std::scoped_lock lock(mutex);samples.swap(draws);clear_samples.swap(fills);
         replay_samples.swap(layout_replays);presentation_samples.swap(presentations);
-        map_samples.swap(map_replays);
+        map_samples.swap(map_replays);shadow_samples.swap(map_shadows);
         capped=truncated;geometry_capped=geometry_truncated;fill_capped=fills_truncated;}
     QJsonArray output,fill_output;
     QJsonArray replay_output,presentation_output;
-    QJsonArray map_output;
+    QJsonArray map_output,shadow_output;
+    for(const auto& sample:shadow_samples) {
+        QJsonArray words;for(auto word:sample.words)words.append(QString::number(word,16));
+        shadow_output.append(QJsonObject{{"frame",double(sample.frame)},{"words",words}});
+    }
     for(const auto& r:map_samples)
         map_output.append(QJsonObject{{"frame",double(r.frame)},
             {"texture",QString::number(r.texture,16)},{"vertices",int(r.vertices)},
@@ -61,7 +65,13 @@ bool Export(const std::string& path) {
         }
         for(auto t:d.textures)textures.append(QString::number(t,16));
         for(auto v:d.state)state.append(double(v));
-        QJsonArray tev,alpha_blend,alpha_test,stencil,clip_positions;
+        QJsonArray tev,alpha_blend,alpha_test,stencil,clip_positions,clip_uvs,map_identity,map_ownership;
+        for(auto v:d.dungeon_map_identity)map_identity.append(QString::number(v,16));
+        for(auto v:d.dungeon_map_ownership)map_ownership.append(QString::number(v,16));
+        for(const auto& uv:d.clip_uvs) {
+            QJsonArray row;for(float v:uv)row.append(std::isfinite(v)?QJsonValue(double(v)):QJsonValue());
+            clip_uvs.append(row);
+        }
         for(auto v:d.stencil)stencil.append(int(v));
         for(const auto& p:d.clip_positions) {
             QJsonArray row;for(float v:p)row.append(std::isfinite(v)?QJsonValue(double(v)):QJsonValue());
@@ -78,7 +88,11 @@ bool Export(const std::string& path) {
             {"framebuffer_format",int(d.framebuffer_format)},{"texture_mask",int(d.texture_mask)},
             {"alpha_blend",alpha_blend},{"alpha_test",alpha_test},
             {"stencil",stencil},{"clip_scale",QJsonArray{d.clip_scale[0],d.clip_scale[1]}},
-            {"clip_positions",clip_positions},
+            {"clip_positions",clip_positions},{"clip_uvs",clip_uvs},
+            {"dungeon_map_identity",map_identity},{"dungeon_map_ownership",map_ownership},
+            {"dungeon_map_gates",int(d.dungeon_map_gates)},{"dungeon_map_result",int(d.dungeon_map_result)},
+            {"dungeon_map_mismatch",int(d.dungeon_map_mismatch)},
+            {"dungeon_map_delta",QJsonArray{d.dungeon_map_delta[0],d.dungeon_map_delta[1]}},
             {"blend_constant",QString::number(d.blend_constant,16)},{"tev",tev},
             {"shader",QString::number(d.shader,16)},{"swizzle",QString::number(d.swizzle,16)},
             {"vertices",double(d.vertices)},{"vertex_base",QString::number(d.base,16)},
@@ -88,8 +102,12 @@ bool Export(const std::string& path) {
             {"cpu_input_registers",cpu_input_registers},{"cpu_topology",int(d.cpu_topology)},
             {"cpu_attribute_count",int(d.cpu_attribute_count)},{"depth_write",d.depth_write}});
     }
-    const auto data=QJsonDocument(QJsonObject{{"schema",7},{"kind","effect-render-capture"},
-        {"map_replays",map_output},
+    const auto data=QJsonDocument(QJsonObject{{"schema",9},{"kind","effect-render-capture"},
+        {"map_replays",map_output},{"map_shadows",shadow_output},
+        {"map_shadow_fields","pass,border-overlay,minimap-hidden,root-replaced,child-count,source-pane,flags,alpha-bits,xx-bits,yy-bits,xy-bits,yx-bits,x-bits,y-bits,description-window,map-mode-word"},
+        {"dungeon_map_gates","1=screen-material,2=owner,4=CPU-replay,8=native-succeeded,16=render-state,32=midpoint-uploaded,64=midpoint-submitted,128=frame-interpolated,256=HUD-rejected,512=60fps-enabled"},
+        {"dungeon_map_result","0=not-attempted,1=invalid-batch,2=nonfinite,3=homogeneous-w,4=capacity,5=no-previous-key,6=ambiguous,7=vertex-count,8=teleport,9=depth,10=UV,11=nonuniform-pan,12=accepted"},
+        {"dungeon_map_ownership_fields","page,layout,submitted-layout,controller,resource,room-word,floor-word,zoom-word"},
         {"map_replay_flags","1=owned-map-camera,2=midpoint-calculated,4=CPU-ready,8=CPU-replayed,16=midpoint-submitted,32=CPU-mode,64=pause-texture,128=native-draw-succeeded"},
         {"map_replay_gates","1=enabled,2=replayable,4=supported-layout,8=color-target,16=top-viewport,32=stencil-compatible,64=no-guest-region,128=full-viewport-origin,256=valid-camera-depth"},
         {"layout_replays",replay_output},{"presentations",presentation_output},
@@ -101,7 +119,7 @@ bool Export(const std::string& path) {
         {"alpha_blend_fields","source,destination,equation"},
         {"alpha_test_fields","enabled,function,reference"},
         {"stencil_fields","enabled,function,reference,compare_mask,write_mask,stencil_fail,depth_fail,pass (effective pipeline state)"},
-        {"clip_positions_fields","Native CPU triangle positions before host clip scaling; bounded small stencil draws only"},
+        {"clip_positions_fields","Native CPU triangle positions before host clip scaling; bounded small stencil draws and dungeon-map draws; map clip_uvs retain matching UVs"},
         {"clip_scale_fields","host clip X,Y multipliers; display horizontal axis is clip Y"},
         {"truncated",capped},{"geometry_truncated",geometry_capped},{"draws",output},
         {"state_fields","blend,source,destination,equation,color_mask,depth_test,stencil_test"},

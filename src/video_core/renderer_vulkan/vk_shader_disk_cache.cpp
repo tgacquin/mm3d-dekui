@@ -80,6 +80,10 @@ void ShaderDiskCache::Init(const std::atomic_bool& stop_loading,
     if (!stop_loading && !InitPLCache(stop_loading, new_callback)) {
         RecreateCache(pl_cache, CacheFileType::PL_CACHE);
     }
+    if (parent.HybridEnabled()) {
+        parent.shader_workers.WaitForRequests();
+        parent.pipeline_workers.WaitForRequests();
+    }
 }
 
 std::optional<std::pair<u64, Shader* const>> ShaderDiskCache::UseProgrammableVertexShader(
@@ -249,6 +253,49 @@ std::optional<std::pair<u64, Shader* const>> ShaderDiskCache::UseFixedGeometrySh
 
         return std::make_pair(gs_config_hash, &shader);
     }
+}
+
+std::pair<u64, Shader*> ShaderDiskCache::GetHybridShader(
+    FSConfig config, const UserConfig& user, bool atlas) {
+#ifdef ENABLE_MM3D_PRESENTATION
+    if (title_id == 0x0004000000125500ULL && MM3D::Fog::disabled.load() &&
+        config.texture.fog_mode == Pica::TexturingRegs::FogMode::Fog)
+        config.texture.fog_mode.Assign(Pica::TexturingRegs::FogMode::None);
+#endif
+    config = Pica::Shader::Hybrid::Family(config);
+    const auto hash = Common::HashCombine(config.Hash(), u64{0x4859425249440001},
+                                          u64{user.raw}, u64{atlas});
+    const auto [it, added] = hybrid_shaders.try_emplace(hash, parent.instance);
+    auto& shader = it->second;
+    if (added) {
+        parent.shader_workers.QueueWork([this, config, user, atlas, &shader] {
+            auto code = GLSL::FragmentModule{config, user, parent.profile, true}.Generate();
+#ifdef ENABLE_MM3D_PRESENTATION
+            if (atlas) code = MM3D::Atlas::Shader(std::move(code));
+#endif
+            shader.module = CompileSPV(CompileGLSL(code, vk::ShaderStageFlagBits::eFragment),
+                                       parent.instance.GetDevice());
+            shader.MarkDone();
+        });
+    }
+    return {hash, &shader};
+}
+
+GraphicsPipeline* ShaderDiskCache::GetHybridPipeline(
+    const PipelineInfo& original, std::array<Shader*, MAX_SHADER_STAGES> shaders,
+    std::pair<u64, Shader*> fragment) {
+    auto info = original;
+    info.state.shader_ids[ProgramType::FS] = fragment.first;
+    shaders[ProgramType::FS] = fragment.second;
+    if (!parent.instance.UseGeometryShaders() || parent.instance.IsFragmentShaderBarycentricSupported())
+        shaders[ProgramType::GS] = nullptr;
+    const auto [it, added] = hybrid_pipelines.try_emplace(info.state.OptimizedHash(parent.instance));
+    if (added)
+        it->second = std::make_unique<GraphicsPipeline>(
+            parent.instance, parent.renderpass_cache, info, *parent.driver_pipeline_cache,
+            *parent.pipeline_layout, shaders, &parent.pipeline_workers);
+    // These are runtime variants, never mixed into the transferable cache.
+    return it->second.get();
 }
 
 GraphicsPipeline* ShaderDiskCache::GetPipeline(const PipelineInfo& info) {
@@ -1103,6 +1150,16 @@ bool ShaderDiskCache::InitFSCache(const std::atomic_bool& stop_loading,
         LOG_DEBUG(Render_Vulkan, "    linked with new SPIRV.");
     }
 
+    if (parent.HybridEnabled() && title_id == 0x0004000000125500ULL) {
+        for (const auto& [hash, offset] : pending_configs) {
+            if (stop_loading) break;
+            const auto cached = fs_cache.ReadAt(offset);
+            const auto* entry = cached.Payload<FSConfigEntry>();
+            if (entry && entry->version == FSConfigEntry::EXPECTED_VERSION &&
+                entry->fs_config.Hash() == hash)
+                hybrid_for_specialized.emplace(hash, GetHybridShader(entry->fs_config, {}, false));
+        }
+    }
     if (regenerate_file) {
         // If we are regenerating, replace the old file with the new one.
         fs_cache.SwitchMode(CacheFile::CacheOpMode::DELETE);
@@ -1473,6 +1530,9 @@ bool ShaderDiskCache::InitPLCache(const std::atomic_bool& stop_loading,
                 *parent.pipeline_layout, shaders, &parent.pipeline_workers);
 
             it_pl.value()->TryBuild(false);
+            if (const auto fallback = hybrid_for_specialized.find(info.state.shader_ids[ProgramType::FS]);
+                fallback != hybrid_for_specialized.end())
+                GetHybridPipeline(info, shaders, fallback->second)->TryBuild(true);
 
             LOG_DEBUG(Render_Vulkan, "    built.");
 

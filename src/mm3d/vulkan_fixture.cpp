@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // ROM-free GPU test: exercise the real overlay on a synthetic Azahar-compatible render target.
 #include <fstream>
+#include <cstdlib>
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -597,6 +598,8 @@ static void PhotoReadbackFixture(const Vulkan::Instance& instance, Vulkan::Sched
     scheduler.RegisterOnSubmit([] {});
     scheduler.RegisterOnDispatch([] {});
 }
+namespace MM3D { void RunHybridShaderFixture(const Vulkan::Instance&, Vulkan::Scheduler&); }
+
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     QTemporaryDir directory;
@@ -604,6 +607,13 @@ int main(int argc, char** argv) {
     Common::Log::Initialize();
     Common::Log::Start();
     try {
+#ifdef __APPLE__
+        if (argc > 1 && std::string_view(argv[1]) == "--hybrid-shaders") {
+            // Match the experimental renderer's required Metal arithmetic mode.
+            setenv("MVK_CONFIG_FAST_MATH_ENABLED", "0", 1);
+            std::cout << "Hybrid fixture: Metal fast math disabled for exact TEV comparison\n";
+        }
+#endif
         HeadlessWindow window;
         Vulkan::Instance instance(window, 0);
         const bool profile=argc>2 && std::string_view(argv[2])=="--performance";
@@ -615,6 +625,10 @@ int main(int argc, char** argv) {
         Vulkan::Scheduler scheduler(instance);
         scheduler.RegisterOnSubmit([] {});
         scheduler.RegisterOnDispatch([] {});
+        if (argc > 1 && std::string_view(argv[1]) == "--hybrid-shaders") {
+            MM3D::RunHybridShaderFixture(instance, scheduler);
+            return 0;
+        }
         if (argc > 1 && std::string_view(argv[1]) == "--gpu-interpolation") {
             MM3D::RunGpuInterpolationFixture(instance, scheduler);
             return 0;

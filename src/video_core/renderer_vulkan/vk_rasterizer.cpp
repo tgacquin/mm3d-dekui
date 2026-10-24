@@ -1,3 +1,4 @@
+#include "mm3d/cursor_interpolation.h"
 #include "mm3d/effect_capture.h"
 // Copyright 2023-2026 Citra Emulator Project / Azahar Emulator Project
 // Licensed under GPLv2 or any later version
@@ -123,11 +124,15 @@ RasterizerVulkan::RasterizerVulkan(Memory::MemorySystem& memory, Pica::PicaCore&
     uniform_size_aligned_vs_pica =
         Common::AlignUp<u32>(sizeof(VSPicaUniformData), uniform_buffer_alignment);
     uniform_size_aligned_vs = Common::AlignUp<u32>(sizeof(VSUniformData), uniform_buffer_alignment);
-    constexpr u32 fs_size=sizeof(FSUniformData)
+    u32 fs_size=sizeof(FSUniformData)
 #ifdef ENABLE_MM3D_PRESENTATION
         +sizeof(MM3D::Atlas::Uniforms)
 #endif
         ;
+    if (pipeline_cache.HybridEnabled()) {
+        ASSERT(fs_size <= Pica::Shader::Hybrid::UniformOffset);
+        fs_size = Pica::Shader::Hybrid::UniformOffset + sizeof(Pica::Shader::Hybrid::Uniforms);
+    }
     uniform_size_aligned_fs = Common::AlignUp<u32>(fs_size, uniform_buffer_alignment);
 
     // Define vertex layout for software shaders
@@ -205,7 +210,7 @@ void RasterizerVulkan::TickFrame() {
     MM3D::CameraMidpoint::fallback_draws=midpoint_fallback;
     midpoint_copies=midpoint_rejected=midpoint_fallback=0;
     if(!MM3D::CameraMidpoint::enabled.load()) {
-        midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();
+        midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();dungeon_map_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();
     }
     MM3D::Minimap::NextFrame();
     MM3D::Profiles::CompleteDetectionFrame();
@@ -748,8 +753,27 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
     MICROPROFILE_SCOPE(Vulkan_Drawing);
     bool cpu_interpolation = false;
 #ifdef ENABLE_MM3D_PRESENTATION
+    std::optional<MM3D::DungeonMapInterpolation::Identity> dungeon_map_identity;
+    std::optional<MM3D::EffectCapture::Draw> dungeon_map_capture;
+    const bool dungeon_map_candidate=[&] {
+        if(pica.vs_setup.GetProgramCodeHash()!=0x89b1ab98da3d9241ULL||
+           pica.vs_setup.uniforms.f[3].w.ToFloat32()!=1)return false;
+        dungeon_map_identity=MM3D::DungeonMapInterpolation::Current(MM3D::guest_frames.load(),
+            MM3D::LinkPoseCapture::interpolation_generation.load());
+        MM3D::CameraMidpoint::Matrix projection{},model=MM3D::CameraMidpoint::Identity();
+        for(unsigned r=0;r<4;++r)for(unsigned c=0;c<4;++c)projection[r][c]=pica.vs_setup.uniforms.f[r][c].ToFloat32();
+        for(unsigned r=0;r<3;++r)for(unsigned c=0;c<4;++c)model[r][c]=pica.vs_setup.uniforms.f[20+r][c].ToFloat32();
+        MM3D::GlareInterpolation::Tev tev{};const auto stages=regs.texturing.GetTevStages();
+        for(unsigned i=0;i<6;++i)tev[i]={stages[i].sources_raw,stages[i].modifiers_raw,
+            stages[i].ops_raw,stages[i].const_color,stages[i].scales_raw};
+        return MM3D::DungeonMapInterpolation::ScreenDraw(pica.vs_setup.GetProgramCodeHash(),
+            pica.vs_setup.GetSwizzleDataHash(),accelerate?u32(regs.pipeline.num_vertices):vertex_batch.size(),projection,model,tev);
+    }();
+    const bool dungeon_map_draw=!accelerate&&dungeon_map_candidate&&dungeon_map_identity&&MM3D::CameraMidpoint::present_60.load();
+    // Map quads use shaded vertices in both user modes. Retain them for
+    // replay independently of the CPU shader-input cache.
     cpu_interpolation = !accelerate && MM3D::CameraMidpoint::enabled.load() &&
-        (MM3D::CpuInterpolation::Enabled() || pica.CanReplayCpuVertices());
+        (MM3D::CpuInterpolation::Enabled() || pica.CanReplayCpuVertices() || dungeon_map_draw);
     const bool replay_geometry = accelerate || cpu_interpolation;
     const bool replay_world = accelerate || (cpu_interpolation && pica.CanReplayCpuVertices());
     MM3D::InterpolationPerformance::Scope performance_draw{MM3D::InterpolationPerformance::Part::Draw};
@@ -1152,9 +1176,18 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
             unsigned(stencil_state.stencil_pass_op.Value())};
         d.clip_scale={vs_data.clip_scale_x,vs_data.clip_scale_y};
         const bool small_stencil=stencil_state.stencil_test_enable && d.vertices<=144;
-        if(small_stencil && !accelerate && vertex_batch.size()<=432) {
+        if((small_stencil || dungeon_map_candidate) && !accelerate && vertex_batch.size()<=4096) {
             for(const auto& vertex:vertex_batch)
                 d.clip_positions.push_back({vertex.position.x,vertex.position.y,vertex.position.z,vertex.position.w});
+        }
+        if(dungeon_map_candidate) {
+            for(const auto& vertex:vertex_batch)d.clip_uvs.push_back({vertex.tex_coord0.x,vertex.tex_coord0.y});
+            const auto stamp=MM3D::DungeonMapInterpolation::CurrentStamp(d.frame,
+                MM3D::LinkPoseCapture::interpolation_generation.load());
+            if(stamp)d.dungeon_map_ownership=stamp->ownership;
+            if(dungeon_map_identity)d.dungeon_map_identity=*dungeon_map_identity;
+            d.dungeon_map_gates=1u|(dungeon_map_identity?2u:0u)|(cpu_interpolation?4u:0u)|
+                (MM3D::CameraMidpoint::present_60.load()?512u:0u);
         }
         d.blend_constant=merger.blend_const.raw;
         const auto stages=regs.texturing.GetTevStages();
@@ -1174,7 +1207,7 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
         const unsigned cpu_capture_limit=particle_strip?768u:144u;
         if(cpu_interpolation && pica.CanReplayCpuVertices() &&
            d.shader==0x89b1ab98da3d9241ULL && d.vertices<=cpu_capture_limit &&
-           (glare_candidate || small_stencil || (b.blend_enable && b.src_color_blend_factor==Pica::FramebufferRegs::BlendFactor::SourceAlpha &&
+           (dungeon_map_candidate || glare_candidate || small_stencil || (b.blend_enable && b.src_color_blend_factor==Pica::FramebufferRegs::BlendFactor::SourceAlpha &&
            (pipeline_info.state.depth_stencil.depth_test_enable || d.vertices==4)))) {
             const auto& replay=pica.GetCpuVertexReplay();
             if(replay.Inputs().size()<=cpu_capture_limit && replay.Order().size()<=cpu_capture_limit) {
@@ -1189,7 +1222,7 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
             }
         }
         if(accelerate && d.shader==0x89b1ab98da3d9241ULL && d.vertices<=144 &&
-           (glare_candidate || small_stencil || (b.blend_enable && b.src_color_blend_factor==Pica::FramebufferRegs::BlendFactor::SourceAlpha &&
+           (dungeon_map_candidate || glare_candidate || small_stencil || (b.blend_enable && b.src_color_blend_factor==Pica::FramebufferRegs::BlendFactor::SourceAlpha &&
            (pipeline_info.state.depth_stencil.depth_test_enable || d.vertices==4)))) {
             const auto& attributes=regs.pipeline.vertex_attributes;
             for(unsigned i=0;i<12;++i)d.formats[i]={unsigned(attributes.GetFormat(i)),
@@ -1212,7 +1245,8 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
                 d.buffers.push_back(std::move(buffer));
             }
         }
-        MM3D::EffectCapture::Observe(std::move(d));
+        if(dungeon_map_candidate)dungeon_map_capture=std::move(d);
+        else MM3D::EffectCapture::Observe(std::move(d));
     }
 #endif
     UploadUniforms(accelerate);
@@ -1558,7 +1592,7 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
         const auto epoch=generation.load();
         if(epoch!=midpoint_generation || midpoint_width!=unsigned(viewport.width) || midpoint_height!=unsigned(viewport.height)) {
             midpoint_scene_clear.Reset();
-            midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();forest_particle_history.Reset();snow_history.Reset();fire_impact_history.Reset();leaf_particle_history.Reset();moth_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();torch_history.Reset();water_particle_history.Reset();water_model_history.Reset();moving_effect_history.Reset();mirror_projection_history.Reset();splash_cpu_history.Reset();burst_particle_history.Reset();spark_history.Reset();firework_history.Reset();chest_particle_history.Reset();sword_trail_history.Reset();shockwave_history.Reset();bubble_history.Reset();ice_particle_history.Reset();midpoint_target_frame.reset();midpoint_world_frame.reset();midpoint_opaque_world_frame.reset();midpoint_stencil_frame.reset();midpoint_generation=epoch;
+            midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();dungeon_map_history.Reset();forest_particle_history.Reset();snow_history.Reset();fire_impact_history.Reset();leaf_particle_history.Reset();moth_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();torch_history.Reset();water_particle_history.Reset();water_model_history.Reset();moving_effect_history.Reset();mirror_projection_history.Reset();splash_cpu_history.Reset();burst_particle_history.Reset();spark_history.Reset();firework_history.Reset();chest_particle_history.Reset();sword_trail_history.Reset();shockwave_history.Reset();bubble_history.Reset();ice_particle_history.Reset();midpoint_target_frame.reset();midpoint_world_frame.reset();midpoint_opaque_world_frame.reset();midpoint_stencil_frame.reset();midpoint_generation=epoch;
             link_history.Reset();song_history.Reset();fire_effect_history.Reset();garo_flame_history.Reset();song_overrides.reset();fire_effect_overrides.reset();link_frame.reset();link_overrides={};
             midpoint_width=unsigned(viewport.width);midpoint_height=unsigned(viewport.height);
         }
@@ -2795,6 +2829,8 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
             regs.pipeline.num_vertices,MM3D::ItemSlideInterpolation::Recent(frame,generation));
         if(MM3D::CameraMidpoint::native_preview.load()||!midpoint_frame_interpolated)
             item_slide_half.reset();
+        if(item_slide_half)MM3D::CursorInterpolation::Snap(*item_slide_half,values,
+            MM3D::CursorInterpolation::Mask(frame,generation,values,regs.pipeline.num_vertices));
         if(item_slide_half&&cpu_interpolation) {
             auto uniforms=pica.vs_setup.uniforms;
             for(unsigned q=0;q<item_slide_half->count;++q)
@@ -2846,6 +2882,8 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
                 !MM3D::CameraMidpoint::native_preview.load(),
                 owner?MM3D::FileSelectInterpolation::Motion(frame,generation,owner):std::vector<float>{},
                 MM3D::FileSelectInterpolation::GlowAlpha(tev));
+            if(file_select_half)MM3D::CursorInterpolation::Snap(*file_select_half,values,
+                MM3D::CursorInterpolation::Mask(frame,generation,values,regs.pipeline.num_vertices));
             if(file_select_half && cpu_interpolation) {
                 auto uniforms=pica.vs_setup.uniforms;
                 for(unsigned q=0;q<file_select_half->count;++q) {
@@ -2931,6 +2969,8 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
                         layout_trace.uniform_delta,std::abs(inventory_half->values[r][c]-values[r][c]));
             }
             if(MM3D::CameraMidpoint::native_preview.load())inventory_half.reset();
+            if(inventory_half)MM3D::CursorInterpolation::Snap(*inventory_half,values,
+                MM3D::CursorInterpolation::Mask(MM3D::guest_frames.load(),key[2],values,regs.pipeline.num_vertices));
             if(inventory_half && cpu_interpolation) {
                 auto uniforms=pica.vs_setup.uniforms;
                 for(unsigned r=0;r<96;++r)if(inventory_half->rows[r])for(unsigned c=0;c<4;++c)
@@ -2966,6 +3006,41 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
                 AppendTriangle(vertices,a,b,c);
             }) && vertices.size()==vertex_batch.size())inventory_cpu_draw=upload_cpu_draw(vertices);
             else inventory_half.reset();
+        }
+    }
+    CpuDraw dungeon_map_cpu_draw{};
+    if(dungeon_map_draw && cpu_interpolation && succeeded && !shadow_rendering && using_color_fb && !use_pause &&
+       MM3D::Widescreen::IsTopViewport(wide_viewport.GetWidth(),wide_viewport.GetHeight())) {
+        const auto& depth=pipeline_info.state.depth_stencil;
+        const auto& blend=pipeline_info.state.blending;const auto& tex=regs.texturing.main_config;
+        using BF=Pica::FramebufferRegs::BlendFactor;
+        if(!depth.depth_test_enable&&!depth.depth_write_enable&&!depth.stencil_test_enable&&
+           blend.blend_enable&&blend.src_color_blend_factor==BF::SourceAlpha&&
+           blend.dst_color_blend_factor==BF::OneMinusSourceAlpha&&blend.color_write_mask==15&&
+           blend.color_blend_eq==Pica::FramebufferRegs::BlendEquation::Add&&
+           tex.texture0_enable&&!tex.texture1_enable&&!tex.texture2_enable) {
+            if(dungeon_map_capture)dungeon_map_capture->dungeon_map_gates|=16;
+            MM3D::DungeonMapInterpolation::Vertices sample(vertex_batch.size());
+            for(unsigned i=0;i<sample.size();++i) {
+                for(unsigned c=0;c<4;++c){sample[i].position[c]=vertex_batch[i].position[c];sample[i].color[c]=vertex_batch[i].color[c];}
+                for(unsigned c=0;c<2;++c)sample[i].uv[c]=vertex_batch[i].tex_coord0[c];
+            }
+            const auto half=dungeon_map_history.Apply(MM3D::guest_frames.load(),
+                {*dungeon_map_identity,regs.texturing.texture0.GetPhysicalAddress(),
+                 regs.framebuffer.framebuffer.GetColorBufferPhysicalAddress(),
+                 MM3D::LinkPoseCapture::interpolation_generation.load()},sample);
+            if(dungeon_map_capture) {
+                dungeon_map_capture->dungeon_map_result=unsigned(dungeon_map_history.result);
+                dungeon_map_capture->dungeon_map_mismatch=dungeon_map_history.mismatch;
+                if(half)for(unsigned c=0;c<2;++c)
+                    dungeon_map_capture->dungeon_map_delta[c]=(*half)[0].position[c]-sample[0].position[c];
+            }
+            if(half&&!MM3D::CameraMidpoint::native_preview.load()) {
+                auto& vertices=midpoint_cpu_vertices;vertices=vertex_batch;
+                for(unsigned i=0;i<vertices.size();++i)for(unsigned c=0;c<2;++c)vertices[i].position[c]=(*half)[i].position[c];
+                dungeon_map_cpu_draw=upload_cpu_draw(vertices);
+                if(dungeon_map_capture&&dungeon_map_cpu_draw.count)dungeon_map_capture->dungeon_map_gates|=32;
+            }
         }
     }
     CpuDraw glare_cpu_draw{};
@@ -3120,6 +3195,9 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
                 midpoint_cpu_draw=inventory_cpu_draw;
                 use_midpoint_cpu_draw=true;
             }
+            if(midpoint_ui && dungeon_map_cpu_draw.count) {
+                midpoint_cpu_draw=dungeon_map_cpu_draw;use_midpoint_cpu_draw=true;
+            }
             if(midpoint_ui && additive && glare_cpu_draw.count && midpoint_frame_interpolated) {
                 midpoint_cpu_draw=glare_cpu_draw;use_midpoint_cpu_draw=true;
                 glare_alpha_override=glare_half_alpha;
@@ -3158,6 +3236,8 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
                 if(additive && glare_vertex_offset && midpoint_frame_interpolated &&
                    !MM3D::CameraMidpoint::native_preview.load())binding_offsets[0]=*glare_vertex_offset;
                 const bool replay_submitted=draw_batch();
+                if(dungeon_map_capture&&midpoint_ui&&replay_submitted&&dungeon_map_cpu_draw.count)
+                    dungeon_map_capture->dungeon_map_gates|=64;
                 if(midpoint_ui && replay_submitted && message_half &&
                    (!cpu_interpolation || (use_midpoint_cpu_draw && message_cpu_draw.count)))
                     layout_trace.flags|=1024;
@@ -3182,7 +3262,7 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
                         std::chrono::steady_clock::now().time_since_epoch()).count();
                 }
                 if(midpoint_ui && ((file_select_half && (!cpu_interpolation || file_select_cpu_draw.count)) ||
-                    inventory_half || (inventory_owner && message_half && (!cpu_interpolation || message_cpu_draw.count))))
+                    inventory_half || (dungeon_map_cpu_draw.count && replay_submitted) || (inventory_owner && message_half && (!cpu_interpolation || message_cpu_draw.count))))
                     midpoint_frame_interpolated=true;
                 binding_offsets[0]=native_position;
                 prompt_layer->x = viewport.x; prompt_layer->y = viewport.y;
@@ -3212,6 +3292,11 @@ bool RasterizerVulkan::Draw(bool accelerate, bool is_indexed) {
             pica.vs_setup.uniforms_dirty = true;
             UploadUniforms(accelerate);
         }
+    }
+    if(dungeon_map_capture) {
+        dungeon_map_capture->dungeon_map_gates|=(succeeded?8u:0u)|(midpoint_frame_interpolated?128u:0u)|
+            (midpoint_hud_failed?256u:0u);
+        MM3D::EffectCapture::Observe(std::move(*dungeon_map_capture));
     }
     if(trace_layout)MM3D::EffectCapture::ObserveLayoutReplay(layout_trace);
 #endif
@@ -3624,7 +3709,7 @@ void RasterizerVulkan::ClearAll(bool flush) {
     midpoint_color_clears.Reset();
     ResetVisibilityDepth();
     ResetPause();ResetPhoto();
-    midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();forest_particle_history.Reset();snow_history.Reset();fire_impact_history.Reset();leaf_particle_history.Reset();moth_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();torch_history.Reset();water_particle_history.Reset();water_model_history.Reset();moving_effect_history.Reset();mirror_projection_history.Reset();splash_cpu_history.Reset();burst_particle_history.Reset();spark_history.Reset();firework_history.Reset();chest_particle_history.Reset();sword_trail_history.Reset();shockwave_history.Reset();bubble_history.Reset();ice_particle_history.Reset();link_history.Reset();song_history.Reset();fire_effect_history.Reset();garo_flame_history.Reset();song_overrides.reset();fire_effect_overrides.reset();link_frame.reset();link_overrides={};
+    midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();dungeon_map_history.Reset();forest_particle_history.Reset();snow_history.Reset();fire_impact_history.Reset();leaf_particle_history.Reset();moth_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();torch_history.Reset();water_particle_history.Reset();water_model_history.Reset();moving_effect_history.Reset();mirror_projection_history.Reset();splash_cpu_history.Reset();burst_particle_history.Reset();spark_history.Reset();firework_history.Reset();chest_particle_history.Reset();sword_trail_history.Reset();shockwave_history.Reset();bubble_history.Reset();ice_particle_history.Reset();link_history.Reset();song_history.Reset();fire_effect_history.Reset();garo_flame_history.Reset();song_overrides.reset();fire_effect_overrides.reset();link_frame.reset();link_overrides={};
     midpoint_scene_clear.Reset();
     midpoint_target_frame.reset();midpoint_world_frame.reset();midpoint_opaque_world_frame.reset();midpoint_stencil_frame.reset();midpoint_fade_frame.reset();midpoint_title_depth_frame.reset();
     for(const auto id : {"@camera_midpoint","@camera_midpoint_fade","@camera_midpoint_hud"})
@@ -3878,6 +3963,10 @@ void RasterizerVulkan::SyncAndUploadLUTs() {
 }
 
 void RasterizerVulkan::UploadUniforms(bool accelerate_draw) {
+    if (pipeline_cache.HybridEnabled() && hybrid_uniforms != pipeline_cache.HybridUniforms()) {
+        hybrid_uniforms = pipeline_cache.HybridUniforms();
+        fs_data_dirty = true;
+    }
     const bool sync_vs_pica = accelerate_draw && (pica.vs_setup.uniforms_dirty
 #ifdef ENABLE_MM3D_PRESENTATION
         || midpoint_projection.has_value() || message_override.has_value() || item_slide_override.has_value()
@@ -3937,6 +4026,9 @@ void RasterizerVulkan::UploadUniforms(bool accelerate_draw) {
 #ifdef ENABLE_MM3D_PRESENTATION
         std::memcpy(uniforms + used_bytes + sizeof(fs_data), &atlas_uniforms, sizeof(atlas_uniforms));
 #endif
+        if (pipeline_cache.HybridEnabled())
+            std::memcpy(uniforms + used_bytes + Pica::Shader::Hybrid::UniformOffset,
+                        &hybrid_uniforms, sizeof(hybrid_uniforms));
         pipeline_cache.UpdateRange(2, offset + used_bytes);
         fs_data_dirty = false;
         used_bytes += uniform_size_aligned_fs;
@@ -3990,7 +4082,7 @@ void RasterizerVulkan::SwitchDiskResources(u64 title_id) {
     dof_scene={};
     midpoint_color_clears.Reset();
     ResetPause();ResetPhoto();
-    midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();forest_particle_history.Reset();snow_history.Reset();fire_impact_history.Reset();leaf_particle_history.Reset();moth_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();torch_history.Reset();water_particle_history.Reset();water_model_history.Reset();moving_effect_history.Reset();mirror_projection_history.Reset();splash_cpu_history.Reset();burst_particle_history.Reset();spark_history.Reset();firework_history.Reset();chest_particle_history.Reset();sword_trail_history.Reset();shockwave_history.Reset();bubble_history.Reset();ice_particle_history.Reset();link_history.Reset();song_history.Reset();fire_effect_history.Reset();garo_flame_history.Reset();song_overrides.reset();fire_effect_overrides.reset();link_frame.reset();link_overrides={};
+    midpoint_history.Reset();world_map_history.Reset();glare_cpu_history.Reset();dungeon_map_history.Reset();forest_particle_history.Reset();snow_history.Reset();fire_impact_history.Reset();leaf_particle_history.Reset();moth_history.Reset();message_history.Reset();message_override.reset();item_slide_history.Reset();item_slide_override.reset();file_select_history.Reset();file_select_override.reset();inventory_history.Reset();banner_history.Reset();magic_meter_history.Reset();heart_history.Reset();lens_history.Reset();letterbox_history.Reset();inventory_override.reset();torch_history.Reset();water_particle_history.Reset();water_model_history.Reset();moving_effect_history.Reset();mirror_projection_history.Reset();splash_cpu_history.Reset();burst_particle_history.Reset();spark_history.Reset();firework_history.Reset();chest_particle_history.Reset();sword_trail_history.Reset();shockwave_history.Reset();bubble_history.Reset();ice_particle_history.Reset();link_history.Reset();song_history.Reset();fire_effect_history.Reset();garo_flame_history.Reset();song_overrides.reset();fire_effect_overrides.reset();link_frame.reset();link_overrides={};
     midpoint_target_frame.reset();midpoint_world_frame.reset();midpoint_opaque_world_frame.reset();midpoint_stencil_frame.reset();midpoint_fade_frame.reset();midpoint_title_depth_frame.reset();
     for(const auto id : {"@camera_midpoint","@camera_midpoint_fade","@camera_midpoint_hud"})
         if(const auto it=prompt_layers.find(id);it!=prompt_layers.end())it->second->NextFrame();

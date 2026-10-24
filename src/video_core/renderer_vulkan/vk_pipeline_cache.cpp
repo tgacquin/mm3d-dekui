@@ -10,6 +10,8 @@
 #include "common/microprofile.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
+#include <cstdlib>
+#include <string_view>
 #include "core/core.h"
 #include "core/loader/loader.h"
 #include "video_core/pica/shader_setup.h"
@@ -94,6 +96,25 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
       trivial_vertex_shader{
           instance, vk::ShaderStageFlagBits::eVertex,
           GLSL::GenerateTrivialVertexShader(instance.IsShaderClipDistanceSupported(), true)} {
+#ifdef ENABLE_MM3D_PRESENTATION
+    if (const char* option = std::getenv("DEKUI_HYBRID_SHADERS")) {
+        hybrid_enabled = std::string_view{option} == "1" || std::string_view{option} == "force";
+        hybrid_force = std::string_view{option} == "force";
+    }
+#ifdef __APPLE__
+    // Metal fast math can reassociate operations across PICA's quantization
+    // boundaries differently in specialized and interpreted TEV code. Require
+    // strict arithmetic for the experiment; do not alter normal renderer mode.
+    const char* metal_math = std::getenv("MVK_CONFIG_FAST_MATH_ENABLED");
+    if (hybrid_enabled && (!metal_math || std::string_view{metal_math} != "0")) {
+        LOG_WARNING(Render_Vulkan,
+                    "Hybrid shaders disabled: on macOS use MVK_CONFIG_FAST_MATH_ENABLED=0 for consistent TEV rounding");
+        hybrid_enabled = false;
+    }
+#endif
+    if (hybrid_enabled)
+        LOG_INFO(Render_Vulkan, "Experimental hybrid fragment shaders enabled (force={})", hybrid_force);
+#endif
     scheduler.RegisterOnDispatch([this] { update_queue.Flush(); });
     profile = Pica::Shader::Profile{
         .enable_accurate_mul = false,
@@ -145,6 +166,20 @@ void PipelineCache::BuildLayout() {
 }
 
 PipelineCache::~PipelineCache() {
+#ifdef __APPLE__
+    // Metal fast math can reassociate operations across PICA's quantization
+    // boundaries differently in specialized and interpreted TEV code. Require
+    // strict arithmetic for the experiment; do not alter normal renderer mode.
+    const char* metal_math = std::getenv("MVK_CONFIG_FAST_MATH_ENABLED");
+    if (hybrid_enabled && (!metal_math || std::string_view{metal_math} != "0")) {
+        LOG_WARNING(Render_Vulkan,
+                    "Hybrid shaders disabled: on macOS use MVK_CONFIG_FAST_MATH_ENABLED=0 for consistent TEV rounding");
+        hybrid_enabled = false;
+    }
+#endif
+    if (hybrid_enabled)
+        LOG_INFO(Render_Vulkan, "Hybrid fragment shaders: fallback draws={} cold pipeline waits={}",
+                 hybrid_draws, hybrid_cold_waits);
     pipeline_workers.WaitForRequests();
     shader_workers.WaitForRequests();
     SaveDriverPipelineDiskCache();
@@ -229,8 +264,13 @@ void PipelineCache::LoadDriverPipelineDiskCache(
     const u32 vendor_id = instance.GetVendorID();
     const u32 device_id = instance.GetDeviceID();
     const u64 program_id = GetProgramID();
-    const auto cache_file_path =
-        fmt::format("{}{:016X}-{:X}{:X}.bin", cache_dir, program_id, vendor_id, device_id);
+    const char* arithmetic_tag = "";
+#ifdef __APPLE__
+    // Do not reuse Metal machine code built with the normal fast-math mode.
+    if (hybrid_enabled) arithmetic_tag = "-hybrid-strict";
+#endif
+    const auto cache_file_path = fmt::format("{}{:016X}-{:X}{:X}{}.bin", cache_dir,
+                                             program_id, vendor_id, device_id, arithmetic_tag);
 
     std::vector<u8> cache_data;
     FileUtil::IOFile cache_file{cache_file_path, "rb"};
@@ -278,8 +318,13 @@ void PipelineCache::SaveDriverPipelineDiskCache() {
     const u64 program_id = GetProgramID();
     // Include both device info and program id in cache path to handle both GPU changes and
     // different games
-    const auto cache_file_path =
-        fmt::format("{}{:016X}-{:X}{:X}.bin", cache_dir, program_id, vendor_id, device_id);
+    const char* arithmetic_tag = "";
+#ifdef __APPLE__
+    // Do not reuse Metal machine code built with the normal fast-math mode.
+    if (hybrid_enabled) arithmetic_tag = "-hybrid-strict";
+#endif
+    const auto cache_file_path = fmt::format("{}{:016X}-{:X}{:X}{}.bin", cache_dir,
+                                             program_id, vendor_id, device_id, arithmetic_tag);
 
     FileUtil::IOFile cache_file{cache_file_path, "wb"};
     if (!cache_file.IsOpen()) {
@@ -376,8 +421,24 @@ bool PipelineCache::BindPipeline(PipelineInfo& info, bool wait_built) {
         info.state.shader_ids[i] = shader_hashes[i];
     }
 
-    GraphicsPipeline* const pipeline = curr_disk_cache->GetPipeline(info);
-    if (!pipeline->IsDone() && !pipeline->TryBuild(wait_built)) {
+    GraphicsPipeline* pipeline = curr_disk_cache->GetPipeline(info);
+    if (hybrid_enabled && hybrid_fragment) {
+        // Build the specialized pipeline without holding up this draw. The
+        // fallback preserves all fixed-function/vertex state and interprets
+        // only the TEV/alpha state supplied in the current uniform snapshot.
+        if (!pipeline->IsDone())
+            pipeline->TryBuild(false);
+        if (hybrid_force || !pipeline->IsDone()) {
+            pipeline = curr_disk_cache->GetHybridPipeline(info, current_shaders, *hybrid_fragment);
+            ++hybrid_draws;
+            if (!pipeline->IsDone()) {
+                ++hybrid_cold_waits;
+                // A previously unseen family/pipeline can still require a
+                // first build. Never skip geometry or use incompatible state.
+                pipeline->TryBuild(true);
+            }
+        }
+    } else if (!pipeline->IsDone() && !pipeline->TryBuild(wait_built)) {
         return false;
     }
 
@@ -579,6 +640,12 @@ void PipelineCache::UseFragmentShader(const Pica::RegsInternal& regs,
                                       const Pica::Shader::UserConfig& user, bool atlas) {
 
     auto res = curr_disk_cache->UseFragmentShader(regs, user, atlas);
+    hybrid_fragment.reset();
+    if (hybrid_enabled && GetProgramID() == 0x0004000000125500ULL) {
+        FSConfig config{regs};
+        hybrid_uniforms = Pica::Shader::Hybrid::MakeUniforms(config);
+        hybrid_fragment = curr_disk_cache->GetHybridShader(config, user, atlas);
+    }
 
     if (res.has_value()) {
         current_shaders[ProgramType::FS] = (*res).second;

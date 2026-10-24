@@ -731,6 +731,8 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Audio settings saved":"Audio settings save FAILED";
             }
             hover_help("Balanced keeps the usual audio processing, with accurate decoding and resampling for rupee pickup, counter and falling tones. Effects reusing those samples also receive the correction. Accurate HLE applies accurate decoding and resampling to all audio. Changes apply as each sound starts its next buffer.");
+        };
+        const auto mute_music_control=[&]() {
             if(ImGui::Checkbox("Mute music",&state.settings.mute_music)) {
                 Music::muted.store(state.settings.mute_music);
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Audio settings saved":"Audio settings save FAILED";
@@ -769,7 +771,6 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 state.status=state.settings.Save(state.directory+"presentation.json")?
                     "Photo setting saved. Restart the game to apply.":"Photo setting save FAILED";
             }
-            hover_help("Captures and displays widescreen photos at the rendering resolution. Disable if taking or viewing HD photos causes crashes or stalls. After restarting, native photos are used and HD capture, loading and saving are bypassed. Previously saved HD files are kept.");
         };
 #if !defined(ENABLE_MM3D_GAME_FOLDER) && !defined(__ANDROID__)
         const auto depth_of_field_control = [&]() {
@@ -865,7 +866,11 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 if(ImGui::Button("Reset")){value=fallback;changed=true;}
                 ImGui::PopID();
             };
-            scale_control("Overall HUD scale",hud.overall);
+            if(PlayerOverlay())scale_control("Overall HUD scale",hud.overall);
+            else {
+                scale_control("Base HUD scale",hud.base_scale);
+                ImGui::TextWrapped("Defines the size at F2 scale 0. F2 changes a separate relative adjustment.");
+            }
             percent_control("Overall HUD opacity",hud.opacity,1.f,"Adjusts all gameplay HUD elements, including the minimap. Combines with minimap opacity and the game's own fades.");
             if(!PlayerOverlay()) {
                 changed|=ImGui::Checkbox("Hide minimap",&hud.hide_minimap);
@@ -897,6 +902,10 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                             if(i==HudAdjustments::Minimap)
                                 percent_control("Opacity",state.settings.minimap_opacity,.85f,"Controls minimap transparency. Combines with overall HUD opacity.");
                             if(i==HudAdjustments::Magic) {
+                                changed|=ImGui::SliderFloat("Width",&hud.magic_width,.5f,3.f,"%.2fx",ImGuiSliderFlags_AlwaysClamp);
+                                hover_help("Extends the fill, black background and border to the right while keeping the left edge fixed. 1.00x preserves your current width.");
+                                ImGui::SameLine();
+                                if(ImGui::Button("Reset width")){hud.magic_width=1.f;changed=true;}
                                 changed|=ImGui::SliderInt("Height",&hud.magic_height_steps,-10,10,"%+d",ImGuiSliderFlags_AlwaysClamp);
                                 help_text("Changes height live while keeping the top edge fixed. Each step is 5% of the default height; width stays unchanged.");
                                 ImGui::SameLine();
@@ -909,7 +918,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                             if(ImGui::Button("Reset element")){hud.elements[i]=0;hud.x[i]=0;hud.y[i]=0;
                                 if(i==HudAdjustments::Buttons){hud.button_x={};hud.button_y={};}
                                 if(i==HudAdjustments::Hearts)hud.heart_spacing=0;
-                                if(i==HudAdjustments::Magic)hud.magic_height_steps=0;
+                                if(i==HudAdjustments::Magic){hud.magic_height_steps=0;hud.magic_width=1.f;}
                                 if(i==HudAdjustments::Minimap)state.settings.minimap_opacity=.85f;changed=true;}
                             if(i==HudAdjustments::Buttons) {
                                 for(unsigned b=0;b<6;++b)if(ImGui::TreeNode(HudAdjustments::ButtonLabels[b])) {
@@ -938,7 +947,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 ImGui::EndTabBar();
             }
             ImGui::Separator();
-            if(ImGui::Button("Reset all HUD settings")){const bool hide_prompts=hud.hide_menu_prompts;hud={};hud.hide_menu_prompts=hide_prompts;state.settings.minimap_opacity=.85f;changed=true;}
+            if(ImGui::Button("Reset all HUD settings")){HudAdjustments::ResetPlayer(hud);state.settings.minimap_opacity=.85f;changed=true;}
             if(changed) {
                 HudAdjustments::Apply(hud);
                 Minimap::opacity.store(state.settings.minimap_opacity);
@@ -1089,8 +1098,11 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             for(unsigned i=0;i<Count;++i) {
                 if(i==0)ImGui::SeparatorText("Health, magic and rupees");
                 if(i==Masks)ImGui::SeparatorText("Inventory and gear");
-                if(i==DungeonKeys)ImGui::SeparatorText("Dungeon keys");
+                if(i==DungeonKeys)ImGui::SeparatorText("Dungeon inventory");
+                const bool current_dungeon=i==RemoveDungeonMap||i==RemoveDungeonCompass;
+                ImGui::BeginDisabled(current_dungeon&&!dungeon_ready.load());
                 if(ImGui::Button(Labels[i]))Queue(Action(i));
+                ImGui::EndDisabled();
                 hover_help(Help[i]);
             }
             ImGui::EndDisabled();
@@ -1118,6 +1130,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             if(pending.load())ImGui::TextUnformatted("Queued — resume the game to apply.");
             else if(result.load()==1)ImGui::TextUnformatted("Cheat applied.");
             else if(result.load()==-1)ImGui::TextUnformatted("Not applied: load a supported game save first.");
+            else if(result.load()==-2)ImGui::TextUnformatted("Not applied: enter a temple first.");
         };
         const auto restoration_controls=[&] {
             if(ImGui::Checkbox("Bombers don't approach automatically",&state.settings.disable_bomber_approach)) {
@@ -1156,8 +1169,6 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             hover_help("Turns off every option in this tab.");
             const auto saving_status=ClassicSaving::Status();
             if(!saving_status.empty())ImGui::TextWrapped("%s",saving_status.c_str());
-            ImGui::Separator();
-            ImGui::TextWrapped("These features are experimental. A full playthrough with them is needed to verify completely that they don't cause crashes/lock-ups.");
         };
         const auto actor_distance_control=[&] {
             if(ImGui::SliderFloat("Enemy / NPC draw distance",&state.settings.actor_draw_distance,1.f,3.f,"%.2fx",ImGuiSliderFlags_AlwaysClamp)) {
@@ -1254,6 +1265,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 audio_accuracy_controls();
                 int level=volume.load();
                 if(ImGui::SliderInt("Volume",&level,0,100,"%d%%"))set_volume.store(level);
+                mute_music_control();
                 ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("Controls")) {
@@ -1924,7 +1936,30 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 changed|=ImGui::SliderFloat("Y",&p.y,-240,240,"%.1f",ImGuiSliderFlags_AlwaysClamp);
                 changed|=ImGui::SliderFloat("Scale",&p.scale,.25f,2,"%.2fx",ImGuiSliderFlags_AlwaysClamp);
                 if(ImGui::Button("Reset")){p={0,0,.8f};changed=true;}
-                ImGui::TextWrapped("Switches between Zoom In and Zoom Out with the map. Uses shared menu prompt opacity.");
+                ImGui::TextWrapped("Switches between Zoom in and Zoom out with the map. Uses shared menu prompt opacity.");
+                ImGui::TreePop();
+            }
+            if(ImGui::TreeNode("Dungeon map buttons")) {
+                auto& p=o.prompts;
+                changed|=ImGui::SliderFloat("X offset",&p.x,-400,400,"%.1f",ImGuiSliderFlags_AlwaysClamp);
+                changed|=ImGui::SliderFloat("Y offset",&p.y,-240,240,"%.1f",ImGuiSliderFlags_AlwaysClamp);
+                changed|=ImGui::SliderFloat("Scale",&p.scale,.5f,2,"%.2fx",ImGuiSliderFlags_AlwaysClamp);
+                changed|=ImGui::SliderFloat("Button icon scale",&p.icon_scale,.5f,2,"%.2fx",ImGuiSliderFlags_AlwaysClamp);
+                changed|=ImGui::SliderFloat("Spacing",&p.spacing,0,60,"%.1f",ImGuiSliderFlags_AlwaysClamp);
+                if(ImGui::Button("Reset dungeon map buttons")){p=DungeonMap::Options{}.prompts;o.prompt_group={};changed=true;}
+                ImGui::TextWrapped("One layout for Move map, A Zoom, Move cursor and B Return. All rows share the same text size, icon size and alignment. Move map fades without shifting the other rows.");
+                ImGui::TreePop();
+            }
+            if(ImGui::TreeNode("Dungeon map arrows")) {
+                changed|=ImGui::SliderFloat("Scale (all four)",&o.arrow_scale,.1f,3,"%.2fx",ImGuiSliderFlags_AlwaysClamp);
+                constexpr std::array<const char*,4> labels{"Up arrow","Down arrow","Left arrow","Right arrow"};
+                for(unsigned i=0;i<4;++i)if(ImGui::TreeNode(labels[i])) {
+                    changed|=ImGui::SliderFloat("X",&o.arrow_offsets[i][0],-800,800,"%.1f",ImGuiSliderFlags_AlwaysClamp);
+                    changed|=ImGui::SliderFloat("Y",&o.arrow_offsets[i][1],-480,480,"%.1f",ImGuiSliderFlags_AlwaysClamp);
+                    if(ImGui::Button("Reset position")){o.arrow_offsets[i]={};changed=true;}
+                    ImGui::TreePop();
+                }
+                if(ImGui::Button("Reset all arrows")){o.arrow_scale=1;o.arrow_offsets={};changed=true;}
                 ImGui::TreePop();
             }
             if(ImGui::TreeNode("Dungeon side panels")) {
@@ -1957,7 +1992,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 "Floor selector", "Location name", "B Return button", "A Zoom button", "Item preview model", "Item description box", "Magnifying glass"};
             for(unsigned i=0;i<DungeonMap::Count;++i) {
                 ImGui::PushID(int(i)+1800);
-                if(ImGui::TreeNode(labels[i])) {
+                if(i!=DungeonMap::Zoom&&ImGui::TreeNode(labels[i])) {
                     auto& p=o.poses[i];const bool model=i==DungeonMap::Model,description=i==DungeonMap::Description;
                     changed|=ImGui::SliderFloat("X",&p.x,model?-20.f:description?-320.f:-512.f,model?20.f:description?320.f:512.f,"%.1f",ImGuiSliderFlags_AlwaysClamp);
                     changed|=ImGui::SliderFloat("Y",&p.y,model?-20.f:-240.f,model?20.f:240.f,"%.1f",ImGuiSliderFlags_AlwaysClamp);
@@ -2146,7 +2181,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             }
             ImGui::TextWrapped("Presets update the sliders; Apply installs them. Other archive layouts are preserved.");
         }
-        if(ImGui::CollapsingHeader("Audio")) { audio_accuracy_controls(); }
+        if(ImGui::CollapsingHeader("Audio")) { audio_accuracy_controls(); mute_music_control(); }
         if(ImGui::CollapsingHeader("Audio diagnostics")) {
             static bool pending=false;
             if(!pending&&ImGui::Button("Capture rupee audio (10 seconds)")) {
@@ -2230,6 +2265,13 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             if(ImGui::IsItemDeactivatedAfterEdit())
                 state.status=state.settings.Save(state.directory+"presentation.json")?
                     "Magic bar height saved (applied live)":"Magic bar height save FAILED";
+            bool width_changed=ImGui::SliderFloat("Magic bar width",&state.settings.player_hud.magic_width,
+                .5f,3.f,"%.2fx",ImGuiSliderFlags_AlwaysClamp);
+            hover_help("Extends the fill, black background, border and shadow together to the right. Shares the Width control in HUD → Magic meter.");
+            ImGui::SameLine();
+            if(ImGui::Button("Reset magic bar width")){state.settings.player_hud.magic_width=1.f;width_changed=true;}
+            if(width_changed){HudAdjustments::Apply(state.settings.player_hud);
+                state.status=state.settings.Save(state.directory+"presentation.json")?"Magic bar width saved":"Magic bar width save FAILED";}
             ImGui::SliderFloat("D-pad Y", &state.settings.dpad_y,
                 -120.f,120.f,"%.1f",ImGuiSliderFlags_AlwaysClamp);
             apply |= ImGui::IsItemDeactivatedAfterEdit();

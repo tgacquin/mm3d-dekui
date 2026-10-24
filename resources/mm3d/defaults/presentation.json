@@ -1,6 +1,6 @@
 {
   "single_screen_text": true,
-  "stick_click_controls": false,
+  "stick_click_controls": true,
   "fix_bloom": true,
   "interpolation_60fps": true,
   "interpolation_cpu_vertices": true,
@@ -611,6 +611,7 @@
   "player_hud_rupees_scale": 0,
   "player_hud_rupees_x": 0,
   "player_hud_rupees_y": 0,
+  "player_hud_base_scale": 2,
   "player_hud_scale": 0,
   "player_hud_top_padding": 0,
   "show_performance": false,

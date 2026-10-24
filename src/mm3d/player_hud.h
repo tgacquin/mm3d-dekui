@@ -121,6 +121,16 @@ struct Hook {
                     }
                 }
             }
+            const float width=MagicWidth(magic_width.load());
+            if(width!=1.f&&bar.Valid()) {
+                // Anchor to the visible frame, not the changing green fill.
+                // Transform the entire meter before MagicBorder clones its
+                // frame/shadow so every layer follows the same right edge.
+                std::vector<Write> width_writes;std::vector<U32> seen;
+                if(!helper.Transform(m,meter,width_writes,seen,{width,0,0,1,bar.left*(1-width),0}))return;
+                for(auto w:width_writes)m.Write(w.address,w.after);
+                frames.back().insert(frames.back().end(),width_writes.begin(),width_writes.end());
+            }
         }
         struct Group {std::vector<U32> roots;Part part;Anchor anchor;bool bottom=false;U32 anchor_node=0;};
         std::vector<Group> groups;
@@ -130,8 +140,14 @@ struct Hook {
             add("heart_status",Hearts,Anchor::TopLeft);
             add("magic_gauge_g",Magic,Anchor::TopLeft,false,"gauge_base");
             add("hud_dpad",Dpad,Anchor::TopLeft);
-            add("rupee_g",Rupees,Anchor::BottomLeft,true);
-            add("key_g",Rupees,Anchor::BottomLeft,true);
+            // The native digit columns already align. Scale both rows around
+            // the rupee row's fixed anchor: their differently shaped icons must
+            // not give each row a separate pivot (or counts drift at larger sizes).
+            std::vector<U32> counters;
+            const auto rupees=find("rupee_g");
+            if(rupees)counters.push_back(rupees);
+            if(auto keys=find("key_g"))counters.push_back(keys);
+            if(!counters.empty())groups.push_back({counters,Rupees,Anchor::BottomLeft,true,rupees});
             add("carrot_status",Carrots,Anchor::Center,true);
             std::vector<U32> roots;for(const char* name:{"item_icon_set","icon_item_oca_g"})if(auto n=find(name))roots.push_back(n);
             if(!roots.empty())groups.push_back({roots,Buttons,Anchor::TopRight});
@@ -186,7 +202,7 @@ struct Hook {
         }
         Bounds upper;
         for(const auto& b:upper_bounds)upper.Add(b);
-        const float global=Factor(overall.load());
+        const float global=OverallScale();
         std::vector<Write> writes;
         for(unsigned i=0;i<groups.size();++i){
             const auto& g=groups[i];auto b=measured[i];

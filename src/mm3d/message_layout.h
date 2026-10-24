@@ -8,13 +8,10 @@ using namespace NativeInventory;
 using MessageInterpolation::Panel;
 // Capture after native layout calculation and all host placement adjustments,
 // immediately before Widget rendering. No animation clock or guest data changes.
-template<class M> std::vector<Panel> Read(M& m,U32 layout) {
+template<class M> std::vector<Panel> ReadBranches(M& m,U32 layout,
+        const std::vector<U32>& roots,U32 tag,unsigned max_nodes=64,unsigned max_panels=16,bool* valid=nullptr) {
+    if(valid)*valid=false;
     std::vector<Panel> panels;
-    if(!LayoutNamed(m,layout,"MessageWindow"))return panels;
-    DialogueScale::Hook finder;std::array<U32,64> searched{};unsigned used=0;
-    const U32 plate=finder.Find(m,layout+8,"plate",searched,used);
-    const auto message=m.Read(layout+0x3f4);
-    if(!plate||!message)return panels;
     std::vector<U32> seen;
     const auto number=[&](U32 at)->std::optional<float> {
         const auto bits=m.Read(at);if(!bits)return {};
@@ -22,7 +19,7 @@ template<class M> std::vector<Panel> Read(M& m,U32 layout) {
         return std::isfinite(f)?std::optional<float>{f}:std::nullopt;
     };
     const auto visit=[&](auto&& self,U32 node,unsigned depth)->bool {
-        if(!Pointer(node,0x140)||depth>32||seen.size()>=64||
+        if(!Pointer(node,0x140)||depth>32||seen.size()>=max_nodes||
            std::find(seen.begin(),seen.end(),node)!=seen.end())return false;
         seen.push_back(node);
         const auto flags=m.Read(node+0xd4);const auto alpha=number(node+0x134);
@@ -35,7 +32,7 @@ template<class M> std::vector<Panel> Read(M& m,U32 layout) {
             // waitIcon and branchArrow; glyphs use another type and remain
             // native so text reveal timing is unchanged.
             if((*kind&65535)==6) {
-                Panel p;p.source={layout,node,*geometry,*message};
+                Panel p;p.source={layout,node,*geometry,tag};
                 std::array<float,5> box{};
                 for(unsigned i=0;i<5;++i) {
                     auto v=number(*geometry+0x14+4*i);if(!v)return false;box[i]=*v;
@@ -64,7 +61,7 @@ template<class M> std::vector<Panel> Read(M& m,U32 layout) {
                 }
                 for(const auto& r:p.transform)for(float v:r)if(!std::isfinite(v))return false;
                 for(const auto& r:p.uv)for(float v:r)if(!std::isfinite(v))return false;
-                if(panels.size()==16)return false;
+                if(panels.size()==max_panels)return false;
                 panels.push_back(p);
             }
         }
@@ -87,16 +84,55 @@ template<class M> std::vector<Panel> Read(M& m,U32 layout) {
         }
         return true;
     };
-    if(!visit(visit,plate,0))return {};
-    // The advance indicator and choice arrow live outside the plate branch.
-    // Keep glyphs and other front-layer decorations out of the ownership pool.
+    for(U32 root:roots) {
+        if(std::find(seen.begin(),seen.end(),root)!=seen.end())continue;
+        if(!visit(visit,root,0))return {};
+    }
+    if(valid)*valid=true;
+    return panels;
+}
+template<class M> std::vector<Panel> Read(M& m,U32 layout,bool indicators=true) {
+    if(!LayoutNamed(m,layout,"MessageWindow"))return {};
+    DialogueScale::Hook finder;std::array<U32,64> searched{};unsigned used=0;
+    // The native composition puts plate directly under all. Avoid exhausting
+    // the general search limit on the localized text/front branches before it.
+    const auto child=[&](U32 parent,const char* name) -> U32 {
+        const auto count=m.Read(parent+0x18),list=m.Read(parent+0x14);
+        if(!count||*count>64||!list||!Pointer(*list,*count*4))return 0;
+        for(unsigned i=0;i<*count;++i) {
+            const auto node=m.Read(*list+4*i);
+            if(node&&Named(m,*node,name))return *node;
+        }
+        return 0;
+    };
+    const U32 all=child(layout+8,"all");
+    U32 plate=all?child(all,"plate"):0;
+    if(!plate)plate=finder.Find(m,layout+8,"plate",searched,used);
+    const auto message=m.Read(layout+0x3f4);
+    if(!plate||!message)return {};
+    bool valid=false;
+    auto panels=ReadBranches(m,layout,{plate},*message,64,16,&valid);
+    if(!valid||!indicators)return panels;
     for(const char* name:{"waitIcon","branchArrow"}) {
         searched.fill(0);used=0;
         const U32 icon=finder.Find(m,layout+8,name,searched,used);
-        if(!icon||std::find(seen.begin(),seen.end(),icon)!=seen.end())continue;
-        const auto count=panels.size();
-        if(!visit(visit,icon,0))panels.resize(count);
+        if(!icon)continue;
+        for(const auto& p:ReadBranches(m,layout,{icon},*message)) {
+            if(panels.size()<16&&std::none_of(panels.begin(),panels.end(),[&](const auto& old){
+                return old.source==p.source;
+            }))panels.push_back(p);
+        }
     }
     return panels;
+}
+// Only native selection-frame branches are eligible. Atlas sharing alone is
+// insufficient: banners and other artwork may share the cursor texture.
+template<class M> std::vector<Panel> ReadCursors(M& m,U32 layout) {
+    if(LayoutNamed(m,layout,"CursorItemCollect"))
+        return ReadBranches(m,layout,{layout+8},0,256,64);
+    if(!LayoutNamed(m,layout,"FileSelect"))return {};
+    DialogueScale::Hook finder;std::array<U32,64> searched{};unsigned used=0;
+    const U32 cursor=finder.Find(m,layout+8,"cursor_g",searched,used);
+    return cursor?ReadBranches(m,layout,{cursor},0,256,64):std::vector<Panel>{};
 }
 }

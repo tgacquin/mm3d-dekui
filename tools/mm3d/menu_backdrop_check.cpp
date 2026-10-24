@@ -39,6 +39,33 @@ Memory BackgroundFixture(U32 page=Q) {
     m.Write(QUEUE+0x844,0);return m;
 }
 int main(int argc,char** argv) {
+    for(U32 page:{I,K,Q,P}) {
+        auto m=BackgroundFixture();m.Write(0x1b03bc,SC);
+        const auto visible=[&](){return !Backdrop::HideGameplayMap(m,G);};
+        m.Write(SC+8,PLAY);m.Write(SC+12,0);assert(visible());
+        // Capturing on recall must already exclude the gameplay minimap,
+        // before the destination page becomes current.
+        m.Write(SC+12,page);auto before=m.words;
+        assert(!visible()&&m.words==before);
+        m.Write(SC+8,page);m.Write(SC+12,0);assert(!visible());
+        m.Write(SC+12,I);assert(!visible()); // move left from Map to Items
+        m.Write(SC+8,I);m.Write(SC+12,0);assert(!visible());
+        m.Write(SC+12,PLAY);assert(!visible());
+        m.Write(SC+8,PLAY);m.Write(SC+12,0);assert(visible());
+        // A second entry, with the gameplay map visible again, follows the
+        // same suppression lifetime rather than inheriting an old flag.
+        m.Write(SC+12,page);assert(!visible());
+        assert(!Backdrop::HideGameplayMap(m,G+4));
+        MM3D::GearMenu::enabled=false;assert(visible());MM3D::GearMenu::enabled=true;
+        m.words.erase(0x1b03bc);assert(visible());
+    }
+    {
+        auto m=BackgroundFixture(P);m.Write(0x1b03bc,SC);
+        m.Byte(P+0x78e,1);assert(!Backdrop::HideGameplayMap(m,G)); // Soaring
+        m.Write(SC+8,PLAY);m.Write(SC+12,P);assert(!Backdrop::HideGameplayMap(m,G));
+        m.Byte(P+0x78e,0);m.Write(P,0);assert(!Backdrop::HideGameplayMap(m,G));
+        m.Write(SC+12,0);assert(!Backdrop::HideGameplayMap(m,G));
+    }
     for(bool shared_graphics:{false,true})for(bool keep_scene:{false,true}) {
         // A saved pictograph must not free or replace the scene screenshot.
         // Model both native allocation lifetimes, including the two destructor

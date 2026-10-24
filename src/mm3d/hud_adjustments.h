@@ -10,7 +10,10 @@ inline constexpr std::array<const char*,Count> Keys{"dpad","magic","hearts","but
 inline constexpr std::array<const char*,Count> Labels{"D-pad","Magic meter","Hearts","Buttons","Minimap","Clock","Rupees","Minigame counter","Epona carrots","Timer"};
 inline constexpr std::array<const char*,6> ButtonKeys{"x","y","i","ii","a","b"};
 inline constexpr std::array<const char*,6> ButtonLabels{"X","Y","I","II","A","B"};
-struct Options {float opacity=1.f,banner_darkness=0.f;std::array<int,6> button_x{},button_y{};bool hide_minimap=false;bool hide_menu_prompts=false;int banner_y=0;int overall=0,top=0,bottom=0,heart_spacing=0,magic_height_steps=0;std::array<int,Count> elements{},x{},y{};};
+struct Options {float opacity=1.f,banner_darkness=0.f;std::array<int,6> button_x{},button_y{};bool hide_minimap=false;bool hide_menu_prompts=false;int banner_y=0;int overall=0,top=0,bottom=0,heart_spacing=0,magic_height_steps=0;std::array<int,Count> elements{},x{},y{};float magic_width=1.f;int base_scale=0;};
+// Editor-authored size is independent of the player's relative F2 adjustment.
+inline Options FreshDefaults(){Options o;o.base_scale=2;return o;}
+inline void ResetPlayer(Options& o){const int base=o.base_scale;const bool prompts=o.hide_menu_prompts;o={};o.base_scale=base;o.hide_menu_prompts=prompts;}
 inline std::atomic<float> opacity{1.f},banner_darkness{0.f};
 inline std::atomic<int> banner_y{0};
 inline int BannerY(){return std::clamp(banner_y.load(),-240,240);}
@@ -27,12 +30,15 @@ inline void ToggleMinimap(){
     minimap_visibility_request.store(!before?1:0);
 }
 inline std::array<std::atomic<int>,6> button_x{},button_y{};
-inline std::atomic<int> overall{0},top{0},bottom{0},heart_spacing{0};
+inline std::atomic<int> base_scale{0},overall{0},top{0},bottom{0},heart_spacing{0};
 inline std::atomic<int> magic_height_steps{0};
+inline std::atomic<float> magic_width{1.f};
+inline float MagicWidth(float value){return std::isfinite(value)?std::clamp(value,.5f,3.f):1.f;}
 inline constexpr int HeartSpacingLimit=40;
 inline std::array<std::atomic<int>,Count> elements{},x{},y{};
 inline float Factor(int steps){return 1.f+.05f*std::clamp(steps,-10,10);}
-inline float Scale(Part part){return Factor(overall.load())*Factor(elements[part].load());}
+inline float OverallScale(){return Factor(base_scale.load())*Factor(overall.load());}
+inline float Scale(Part part){return OverallScale()*Factor(elements[part].load());}
 inline int X(Part part){return std::clamp(x[part].load(),-400,400);}
 inline int Y(Part part){return std::clamp(y[part].load(),-240,240);}
 inline int Top(){return std::clamp(top.load(),0,40);}
@@ -40,8 +46,9 @@ inline int Bottom(){return std::clamp(bottom.load(),0,40);}
 inline void Apply(const Options& o){hide_minimap=o.hide_minimap;
     opacity=Unit(o.opacity,1.f);banner_darkness=Unit(o.banner_darkness,0.f);banner_y=std::clamp(o.banner_y,-240,240);
     for(unsigned i=0;i<6;++i){button_x[i]=std::clamp(o.button_x[i],-400,400);button_y[i]=std::clamp(o.button_y[i],-240,240);}
-    hide_menu_prompts=o.hide_menu_prompts;overall=o.overall;top=o.top;bottom=o.bottom;
+    hide_menu_prompts=o.hide_menu_prompts;base_scale=std::clamp(o.base_scale,-10,10);overall=o.overall;top=o.top;bottom=o.bottom;
     magic_height_steps=std::clamp(o.magic_height_steps,-10,10);
+    magic_width=MagicWidth(o.magic_width);
     heart_spacing=std::clamp(o.heart_spacing,-HeartSpacingLimit,HeartSpacingLimit);
     for(unsigned i=0;i<Count;++i){elements[i]=o.elements[i];x[i]=o.x[i];y[i]=o.y[i];}}
 }

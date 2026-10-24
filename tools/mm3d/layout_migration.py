@@ -76,12 +76,13 @@ def migrate(raw, data):
     previous_rules = data.get('previous_fullscreen_draws')
     if isinstance(previous_rules, list) and obj.get('fullscreen_draws') == previous_rules:
         obj['fullscreen_draws'] = copy.deepcopy(current['fullscreen_draws'])
-    # Only genuinely absent keys receive release defaults. Existing gameplay/HUD
-    # choices, unknown keys and ambiguous layout groups remain unchanged.
+    # Absent keys receive release defaults, except preferences whose legacy
+    # default must differ from a new installation (such as stick-click controls).
+    # Existing choices, unknown keys and ambiguous layout groups stay unchanged.
     held_prefixes = tuple(p for name in retained for p in GROUPS[name])
     for k, v in current.items():
         if k not in obj and not (held_prefixes and k.startswith(held_prefixes)):
-            obj[k] = v
+            obj[k] = data.get('existing_install_defaults', {}).get(k, v)
     return (raw if obj == original else (json.dumps(obj, indent=2)+'\n').encode()), retained
 
 

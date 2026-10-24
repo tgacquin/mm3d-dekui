@@ -34,6 +34,7 @@
 #include "mm3d/item_slide_interpolation.h"
 #include "mm3d/file_select_interpolation.h"
 #include "mm3d/inventory_interpolation.h"
+#include "mm3d/dungeon_map_interpolation.h"
 #include "mm3d/banner_interpolation.h"
 #include "mm3d/magic_meter_interpolation.h"
 #include "mm3d/lens_interpolation.h"
@@ -199,6 +200,7 @@ private:
     std::optional<std::pair<unsigned,float>> water_model_alpha_override;
     MM3D::GlareInterpolation glare_history;
     MM3D::GlareInterpolation::ScreenHistory glare_cpu_history;
+    MM3D::DungeonMapInterpolation::History dungeon_map_history;
     std::optional<float> glare_alpha_override;
     MM3D::RippleInterpolation::History ripple_history;
     MM3D::ForestParticleInterpolation::History forest_particle_history;
@@ -327,6 +329,7 @@ private:
     u32 uniform_size_aligned_vs_pica;
     u32 uniform_size_aligned_vs;
     u32 uniform_size_aligned_fs;
+    Pica::Shader::Hybrid::Uniforms hybrid_uniforms{};
     bool async_shaders{false};
 };
 

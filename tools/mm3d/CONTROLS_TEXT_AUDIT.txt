@@ -176,8 +176,8 @@ Only the Equip to I/II control prefixes/icons change for the optional layout.
 - Equip to II | French: Assigner II | Spanish: Asignar a II
 - Items | French: Inventaire | Spanish: Inventario
 - Map | French: Carte | Spanish: Mapa
-- Zoom In | French: Zoom + | Spanish: Acercar
-- Zoom Out | French: Zoom - | Spanish: Alejar
+- Zoom in | French: Zoom + | Spanish: Acercar
+- Zoom out | French: Zoom - | Spanish: Alejar
 - View schedule | French: Voir horaires | Spanish: Ver horarios
 - View events | French: Voir l'historique | Spanish: Ver eventos
 - View map | French: Carte | Spanish: Mapa

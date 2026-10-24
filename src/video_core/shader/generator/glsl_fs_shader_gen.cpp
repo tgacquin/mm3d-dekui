@@ -3,6 +3,7 @@
 // Refer to the license.txt file included.
 
 #include "video_core/shader/generator/glsl_fs_shader_gen.h"
+#include "video_core/shader/generator/hybrid_fs_config.h"
 
 namespace Pica::Shader::Generator::GLSL {
 
@@ -102,8 +103,8 @@ layout (binding = 2, std140) uniform fs_data {
 )";
 
 FragmentModule::FragmentModule(const FSConfig& config_, const UserConfig& user_,
-                               const Profile& profile_)
-    : config{config_}, user{user_}, profile{profile_} {
+                               const Profile& profile_, bool hybrid_)
+    : config{config_}, user{user_}, profile{profile_}, hybrid{hybrid_} {
     config.ApplyProfile(profile_);
     out.reserve(RESERVE_SIZE);
     DefineExtensions();
@@ -125,6 +126,14 @@ FragmentModule::FragmentModule(const FSConfig& config_, const UserConfig& user_,
 FragmentModule::~FragmentModule() = default;
 
 std::string FragmentModule::Generate() {
+    if (hybrid) {
+        const auto block = out.find("vec4 blend_color;");
+        ASSERT(block != std::string::npos);
+        out.insert(block + std::string_view{"vec4 blend_color;"}.size(),
+                   fmt::format("\nlayout(offset = {}) uvec4 hybrid_stages[6];\nuvec4 hybrid_control;\n",
+                               Hybrid::UniformOffset));
+        DefineHybridHelpers();
+    }
     // We round the interpolated primary color to the nearest 1/255th
     // This maintains the PICA's 8 bits of precision
     out += R"(
@@ -135,7 +144,7 @@ vec4 secondary_fragment_color = vec4(0.0);
 )";
 
     // Do not do any sort of processing if it's obvious we're not going to pass the alpha test
-    if (config.framebuffer.alpha_test_func == FramebufferRegs::CompareFunc::Never) {
+    if (!hybrid && config.framebuffer.alpha_test_func == FramebufferRegs::CompareFunc::Never) {
         out += "discard; }";
         return out;
     }
@@ -160,12 +169,21 @@ vec4 secondary_fragment_color = vec4(0.0);
            "float alpha_results_3 = 0.0;\n";
 
     // Write shader source to emulate PICA TEV stages
-    for (u32 index = 0; index < config.texture.tev_stages.size(); index++) {
-        WriteTevStage(index);
+    if (hybrid) {
+        WriteHybridStages();
+        out += "switch (hybrid_control.y) {\n";
+        for (u32 func = 0; func < 8; ++func) {
+            out += fmt::format("case {}u: ", func);
+            WriteAlphaTestCondition(static_cast<FramebufferRegs::CompareFunc>(func));
+            out += "break;\n";
+        }
+        out += "}\n";
+    } else {
+        for (u32 index = 0; index < config.texture.tev_stages.size(); index++) {
+            WriteTevStage(index);
+        }
+        WriteAlphaTestCondition(config.framebuffer.alpha_test_func);
     }
-
-    // Append the alpha test condition
-    WriteAlphaTestCondition(config.framebuffer.alpha_test_func);
 
     // Emulate the fog
     switch (config.texture.fog_mode) {
@@ -480,6 +498,101 @@ void FragmentModule::WriteTevStage(u32 index) {
     if (config.TevStageUpdatesCombinerBufferAlpha(index)) {
         out += "next_combiner_buffer.a = combiner_output.a;\n";
     }
+}
+
+
+void FragmentModule::DefineHybridHelpers() {
+    using Stage = TexturingRegs::TevStageConfig;
+    out += R"(
+vec4 hybrid_source(uint source, int stage, vec4 rounded_primary_color,
+                   vec4 primary_fragment_color, vec4 secondary_fragment_color,
+                   vec4 combiner_buffer, vec4 combiner_output) {
+    switch (source) {
+)";
+    for (u32 source : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 13u, 14u, 15u}) {
+        const auto expression = source == 14 ? "const_color[stage]" :
+            GetSource(static_cast<Stage::Source>(source), 1);
+        out += fmt::format("case {}u: return {};\n", source, expression);
+    }
+    out += "default: return vec4(0.0);\n}}\n";
+    out += "vec3 hybrid_color(uint modifier, vec4 combiner_output) { switch (modifier) {\n";
+    for (u32 modifier : {0u, 1u, 2u, 3u, 4u, 5u, 8u, 9u, 12u, 13u}) {
+        out += fmt::format("case {}u: return ", modifier);
+        AppendColorModifier(static_cast<Stage::ColorModifier>(modifier), Stage::Source::Previous, 1);
+        out += ";\n";
+    }
+    out += "default: return vec3(0.0);\n}}\n";
+    out += "float hybrid_alpha(uint modifier, vec4 combiner_output) { switch (modifier) {\n";
+    for (u32 modifier = 0; modifier < 8; ++modifier) {
+        out += fmt::format("case {}u: return ", modifier);
+        AppendAlphaModifier(static_cast<Stage::AlphaModifier>(modifier), Stage::Source::Previous, 1);
+        out += ";\n";
+    }
+    out += "default: return 0.0;\n}}\n";
+    out += "vec3 hybrid_color_op(uint op, vec3 color_results_1, vec3 color_results_2, vec3 color_results_3) { switch (op) {\n";
+    for (u32 op = 0; op < 10; ++op) {
+        out += fmt::format("case {}u: return ", op);
+        AppendColorCombiner(static_cast<Stage::Operation>(op));
+        out += ";\n";
+    }
+    out += "default: return vec3(0.0);\n}}\n";
+    out += "float hybrid_alpha_op(uint op, float alpha_results_1, float alpha_results_2, float alpha_results_3) { switch (op) {\n";
+    for (u32 op : {0u, 1u, 2u, 3u, 4u, 5u, 8u, 9u}) {
+        out += fmt::format("case {}u: return ", op);
+        AppendAlphaCombiner(static_cast<Stage::Operation>(op));
+        out += ";\n";
+    }
+    out += "default: return 0.0;\n}}\n";
+}
+
+void FragmentModule::WriteHybridStages() {
+    out += R"(
+for (int stage = 0; stage < 6; ++stage) {
+    uvec4 state = hybrid_stages[stage];
+    uvec3 cs = uvec3(state.x, state.x >> 4, state.x >> 8) & 15u;
+    uvec3 asrc = uvec3(state.x >> 16, state.x >> 20, state.x >> 24) & 15u;
+    uvec3 cm = uvec3(state.y, state.y >> 4, state.y >> 8) & 15u;
+    uvec3 am = uvec3(state.y >> 12, state.y >> 16, state.y >> 20) & 7u;
+    uint color_op = state.z & 15u;
+    uint alpha_op = (state.z >> 16) & 15u;
+    uint color_scale = state.w & 3u;
+    uint alpha_scale = (state.w >> 16) & 3u;
+    // Match the reference's pass-through rule, including its first-stage case.
+    bool pass_through = color_op == 0u && alpha_op == 0u &&
+        cs.x == 15u && asrc.x == 15u && cm.x == 0u && am.x == 0u &&
+        (color_scale == 0u || color_scale == 3u) &&
+        (alpha_scale == 0u || alpha_scale == 3u);
+    if (!pass_through) {
+        // PICA uses source 3 when Previous is requested in stage zero.
+        if (stage == 0) {
+            cs = uvec3(cs.x == 15u ? cs.z : cs.x, cs.y == 15u ? cs.z : cs.y, cs.z);
+            asrc = uvec3(asrc.x == 15u ? asrc.z : asrc.x, asrc.y == 15u ? asrc.z : asrc.y, asrc.z);
+        }
+)";
+    for (unsigned i = 0; i < 3; ++i) {
+        out += fmt::format(R"(
+        color_results_{0} = hybrid_color(cm[{1}], hybrid_source(cs[{1}], stage,
+            rounded_primary_color, primary_fragment_color, secondary_fragment_color,
+            combiner_buffer, combiner_output));
+        alpha_results_{0} = hybrid_alpha(am[{1}], hybrid_source(asrc[{1}], stage,
+            rounded_primary_color, primary_fragment_color, secondary_fragment_color,
+            combiner_buffer, combiner_output));
+)", i + 1, i);
+    }
+    out += R"(
+        vec3 color_result = byteround(hybrid_color_op(color_op, color_results_1, color_results_2, color_results_3));
+        float alpha_result = color_op == 7u ? color_result.r :
+            byteround(hybrid_alpha_op(alpha_op, alpha_results_1, alpha_results_2, alpha_results_3));
+        combiner_output = vec4(clamp(color_result * float(1u << (color_scale < 3u ? color_scale : 0u)), vec3(0.0), vec3(1.0)),
+                               clamp(alpha_result * float(1u << (alpha_scale < 3u ? alpha_scale : 0u)), 0.0, 1.0));
+    }
+    combiner_buffer = next_combiner_buffer;
+    if (stage < 4) {
+        if ((hybrid_control.x & (1u << stage)) != 0u) next_combiner_buffer.rgb = combiner_output.rgb;
+        if ((hybrid_control.x & (16u << stage)) != 0u) next_combiner_buffer.a = combiner_output.a;
+    }
+}
+)";
 }
 
 void FragmentModule::WriteLighting() {

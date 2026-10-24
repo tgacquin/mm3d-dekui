@@ -67,6 +67,7 @@ template<class Memory> float HeartsOpacity(Memory& m) {
 struct Entry { U32 object, priority; };
 struct Hook {
     bool armed = false;
+    bool suppress_draw = false;
     U32 owner = 0;
     std::vector<Entry> before;
     std::vector<std::pair<U32,U32>> zoom_restore;
@@ -132,9 +133,11 @@ struct Hook {
         }
         return true;
     }
-    template<class Memory> void Begin(Memory& m, U32 screen, bool enabled, U32 game=0) {
+    template<class Memory> void Begin(Memory& m, U32 screen, bool enabled, U32 game=0,
+                                     bool suppress=false) {
         RestoreZoom(m);
         armed = false;
+        suppress_draw = suppress;
         moved_quads.store(0);
         status.store(1);
         owner = screen;
@@ -178,7 +181,18 @@ struct Hook {
                 if (occurrences != (q==6 ? 1u : 0u)) return;
             }
         }
-        if(HudAdjustments::hide_minimap) {
+        if(HudAdjustments::hide_minimap||suppress_draw) {
+            // A removed drawable never reaches the native prepare/draw routine
+            // (retail 5E8B7C), which consumes its quad count at 5E8F84.
+            // Discard those pending quads too, or the shared radar buffer keeps
+            // small gameplay icons and appends them to the next full map draw.
+            // Validate every selected object before changing either buffer/queue.
+            for(const auto& e:selected) {
+                if(e.object<0x100000 || (e.object&3) || e.object>=0x3ffffc58)return;
+                const auto n=m.Read(e.object+0x2c8),cap=m.Read(e.object+0x2c4);
+                if(!n||!cap||*n>*cap||*cap>4096)return;
+            }
+            for(const auto& e:selected)m.Write(e.object+0x2c8,0);
             // Remove only this gameplay call's map/radar entries. Full map menus
             // use their own routing; unrelated lower-screen objects remain.
             for(unsigned i=0;i<retained.size();++i) {

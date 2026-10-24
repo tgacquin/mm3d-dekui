@@ -27,18 +27,159 @@ int main(int argc, char** argv) {
     try {
         {
             QTemporaryDir directory;
+            const auto path=directory.filePath("hud-baseline.json");
+            MM3D::Settings fresh;
+            Require(fresh.player_hud.base_scale==2&&fresh.player_hud.overall==0,
+                    "new users get editor +2 size with F2 at zero");
+            for(int steps=-10;steps<=10;++steps) {
+                QFile file(path);Require(file.open(QIODevice::WriteOnly),"legacy HUD fixture");
+                file.write(QJsonDocument(QJsonObject{{"version",1},{"player_hud_scale",steps}}).toJson());
+                file.close();
+                MM3D::Settings old;Require(old.Load(path),"legacy HUD loads");
+                Require(old.player_hud.base_scale==0&&old.player_hud.overall==steps,
+                        "legacy HUD size and user choice stay unchanged");
+                Require(old.Save(path),"legacy HUD saves");
+                MM3D::Settings again;Require(again.Load(path),"legacy HUD reloads");
+                Require(again.player_hud.base_scale==0&&again.player_hud.overall==steps,
+                        "legacy HUD is not enlarged after restarting");
+            }
+            fresh.player_hud.overall=-3;
+            Require(fresh.Save(path),"relative HUD scale saves");
+            MM3D::Settings restored;Require(restored.Load(path),"relative HUD scale loads");
+            Require(restored.player_hud.base_scale==2&&restored.player_hud.overall==-3,
+                    "editor baseline and user offset persist independently");
+            MM3D::HudAdjustments::ResetPlayer(restored.player_hud);
+            Require(restored.player_hud.base_scale==2&&restored.player_hud.overall==0,
+                    "F2 reset retains the editor baseline");
+        }
+        {
+            QTemporaryDir directory;
+            const auto path=directory.filePath("map-prompts.json");
+            for(bool customized:{false,true}) {
+                QJsonObject legacy{{"version",1}};
+                if(customized) {
+                    legacy.insert("notebook_buttons_x",145);
+                    legacy.insert("notebook_buttons_scale",1.25);
+                    legacy.insert("notebook_buttons_icon_scale",.75);
+                    legacy.insert("notebook_prompt_y",18);
+                    legacy.insert("notebook_map_prompt_y",-9);
+                }
+                QFile file(path);Require(file.open(QIODevice::WriteOnly),"legacy map prompt fixture");
+                const auto original=QJsonDocument(legacy).toJson();file.write(original);file.close();
+                MM3D::Settings settings;Require(settings.Load(path),"legacy map prompts load");
+                const auto migrated=settings.dungeon_map.prompts;
+                Require(settings.dungeon_map.arrow_scale==1&&
+                        settings.dungeon_map.arrow_offsets==std::array<std::array<float,2>,4>{},
+                        "old layouts keep all four native map arrow poses");
+                settings.dungeon_map.arrow_scale=1.75f;
+                settings.dungeon_map.arrow_offsets={{{12,-7},{-4,19},{33,8},{-22,-11}}};
+                const auto initial_group=settings.dungeon_map.prompt_group;
+                Require(initial_group.x==0&&initial_group.y==0&&initial_group.scale==1&&initial_group.icon_scale==1,
+                        "new global map adjustments preserve existing prompt layouts");
+                Require(migrated.x==0&&migrated.y==0,"ignored notebook offsets do not shift migrated prompts");
+                Require(migrated.scale==(customized?1.25f:1.f)&&
+                        migrated.icon_scale==(customized?.75f:1.f)&&migrated.spacing==(customized?27.f:20.f),
+                        "legacy map prompt sizes and spacing preserved");
+                Require(file.open(QIODevice::ReadOnly)&&file.readAll()==original,"load does not rewrite user configuration");file.close();
+                settings.notebook_live.prompt_scale=1.9f;settings.notebook_live.prompt_icon_scale=1.8f;
+                settings.notebook_live.prompt_y=40;settings.notebook_live.map_prompt_y=0;
+                settings.dungeon_map.prompts.x=23;settings.dungeon_map.prompts.y=-11;
+                settings.dungeon_map.prompt_group={-17,9,.75f,1.5f};
+                Require(settings.Save(path),"independent map prompt preferences save");
+                MM3D::Settings restored;Require(restored.Load(path),"migrated map prompts reload");
+                const auto& p=restored.dungeon_map.prompts;
+                Require(restored.dungeon_map.arrow_scale==1.75f&&
+                        restored.dungeon_map.arrow_offsets==settings.dungeon_map.arrow_offsets,
+                        "four independent map arrow offsets and shared scale roundtrip");
+                const auto& group=restored.dungeon_map.prompt_group;
+                Require(group.x==-17&&group.y==9&&group.scale==.75f&&group.icon_scale==1.5f,
+                        "global dungeon button adjustments roundtrip independently");
+                Require(p.x==23&&p.y==-11&&p.scale==migrated.scale&&
+                        p.icon_scale==migrated.icon_scale&&p.spacing==migrated.spacing,
+                        "saved map values override later Notebook changes");
+                Require(restored.notebook_live.prompt_scale==1.9f&&restored.notebook_live.prompt_y==40,
+                        "Notebook preferences remain independent");
+            }
+        }
+        {
+            QTemporaryDir directory;
+            const auto path=directory.filePath("hud-menu-isolation.json");
+            const auto read=[&] {
+                QFile file(path);Require(file.open(QIODevice::ReadOnly),"read menu settings fixture");
+                return QJsonDocument::fromJson(file.readAll()).object();
+            };
+            const auto menu_values=[](const QJsonObject& object,bool notebook_only=false) {
+                QJsonObject result;
+                for(auto it=object.begin();it!=object.end();++it) {
+                    const auto key=it.key();
+                    if(key.startsWith("notebook_")||(!notebook_only&&
+                       (key.startsWith("dungeon_map_")||key.startsWith("world_map_")||
+                        key.startsWith("inventory_map_prompt"))))result.insert(key,it.value());
+                }
+                return result;
+            };
+            for(bool modern:{false,true}) {
+                QJsonObject original{{"version",1},{"player_hud_scale",2},
+                    {"notebook_buttons_x",53},{"notebook_prompt_y",12},
+                    {"notebook_map_prompt_y",-16},{"notebook_buttons_scale",1.25},
+                    {"notebook_buttons_icon_scale",.75},{"notebook_popup_width",1.5},
+                    {"notebook_live_0_x",21},{"notebook_live_0_y",-7},{"notebook_live_0_scale",.75},
+                    {"dungeon_map_0_x",33},{"dungeon_map_0_y",-15},{"dungeon_map_0_scale",.75},
+                    {"world_map_native_zoom_x",-18},{"world_map_native_zoom_scale",1.5},
+                    {"world_map_zoom_prompt_x",26},{"inventory_map_prompt_y",-29}};
+                if(modern) {
+                    original.insert("dungeon_map_prompts_x",-37);
+                    original.insert("dungeon_map_prompts_scale",.75);
+                    original.insert("dungeon_map_prompts_icon_scale",1.5);
+                    original.insert("dungeon_map_prompts_spacing",31);
+                }
+                QFile file(path);Require(file.open(QIODevice::WriteOnly),"write menu isolation fixture");
+                file.write(QJsonDocument(original).toJson());file.close();
+                MM3D::Settings settings;Require(settings.Load(path)&&settings.Save(path),"menu profile roundtrip");
+                const auto saved=read();
+                for(auto it=original.begin();it!=original.end();++it)
+                    Require(saved.value(it.key())==it.value(),"custom legacy menu values retained");
+                const auto menus=menu_values(saved);
+                settings.player_hud.base_scale=2;settings.player_hud.overall=4;
+                settings.player_hud.magic_width=2;settings.player_hud.x[MM3D::HudAdjustments::Minimap]=37;
+                Require(settings.Save(path)&&menu_values(read())==menus,"HUD edits cannot alter map or Notebook settings");
+                MM3D::HudAdjustments::ResetPlayer(settings.player_hud);
+                Require(settings.Save(path)&&menu_values(read())==menus,"F2 reset cannot alter map or Notebook settings");
+                MM3D::Settings restarted;Require(restarted.Load(path),"menu isolation restart");
+                // The legacy inheritance is captured on first save. Later
+                // Notebook edits must never move or resize the dungeon hints.
+                restarted.notebook_live.prompt_scale=1.75f;
+                restarted.notebook_live.prompt_y=43;
+                const auto map_scale=restarted.dungeon_map.prompts.scale;
+                const auto map_spacing=restarted.dungeon_map.prompts.spacing;
+                Require(restarted.Save(path),"Notebook edit saves");
+                MM3D::Settings again;Require(again.Load(path),"Notebook edit reloads");
+                Require(again.dungeon_map.prompts.scale==map_scale&&again.dungeon_map.prompts.spacing==map_spacing,
+                        "Notebook edits do not resize migrated map buttons");
+                const auto notebook=menu_values(read(),true);
+                again.dungeon_map.prompts.scale=1.5f;again.dungeon_map.prompts.spacing=17;
+                Require(again.Save(path)&&menu_values(read(),true)==notebook,
+                        "map button edits do not alter Notebook settings");
+            }
+        }
+        {
+            QTemporaryDir directory;
             const auto path=directory.filePath("photos.json");
             QFile file(path);Require(file.open(QIODevice::WriteOnly),"photo setting fixture");
             file.write("{\"version\":1}");file.close();
             MM3D::Settings settings;
+            Require(settings.stick_click_controls && !settings.Load(directory.filePath("missing.json")) &&
+                    settings.stick_click_controls,"missing settings keep new-user stick controls");
             Require(settings.hd_pictograph_photos,"HD photos default on for new installations");
             Require(settings.Load(path)&&settings.hd_pictograph_photos,"old settings default to HD photos");
             for(bool enabled:{false,true}) {
                 settings.hd_pictograph_photos=enabled;
+                settings.stick_click_controls=enabled;
                 Require(settings.Save(path),"photo preference saves");
                 MM3D::Settings restored;
                 Require(restored.Load(path)&&restored.hd_pictograph_photos==enabled,
                         "HD photo fallback choice survives restart");
+                Require(restored.stick_click_controls==enabled,"either stick control preference survives restart");
             }
         }
         {
@@ -340,7 +481,7 @@ int main(int argc, char** argv) {
         }
         Require(!MM3D::CameraWriter::active.load(), "CPU writer stops at bounded hit count");
         MM3D::Settings settings;
-        Require(!settings.stick_click_controls,"stick-click controls default off");
+        Require(settings.stick_click_controls,"new installations default to stick-click controls");
         settings.stick_click_controls=true;
         const auto default_photo=settings.inventory_menu.gear.poses[MM3D::GearMenu::Photo];
         Require(default_photo.x==78.7f&&default_photo.y==-20.6f&&default_photo.scale==.88f,
@@ -384,6 +525,8 @@ int main(int argc, char** argv) {
         settings.depth_of_field={true,800.f,1600.f,2.f};
         settings.ambient_occlusion={true,.75f,60.f};
         Require(settings.player_hud.banner_y==0,"location banner uses editor position by default");
+        Require(settings.player_hud.magic_width==1.f,"magic width preserves existing geometry by default");
+        settings.player_hud.magic_width=1.75f;
         settings.player_hud.banner_y=24;
         Require(!settings.double_prices&&settings.price_multiplier==2,"price difficulty defaults off with 2x selected");
         settings.double_prices=true;settings.price_multiplier=3;
@@ -427,6 +570,8 @@ int main(int argc, char** argv) {
         settings.mask_present.help_pose={15,210,.7f};settings.mask_present.help_spacing=9;
         settings.fullscreen_draws={MM3D::WidescreenProbe::Draw{
             0x89b1ab98da3d9241ULL,0xfedcba9876543210ULL,4,480,400,0,65536,4294967295u}};
+        settings.dungeon_map_zoom_prompt={-13.25f,-31.5f,.77f};
+        settings.dungeon_map_move_prompt={14.5f,-48.25f,.85f};
         settings.file_select.entrance_ease=2.75f;
         settings.inventory_menu.gear.poses[MM3D::GearMenu::Photo]={100,15,.5f};
         Require(settings.Save(path), "initial atomic save");
@@ -434,6 +579,10 @@ int main(int argc, char** argv) {
         Require(settings.Save(path), "atomic replacement");
         MM3D::Settings loaded;
         Require(loaded.Load(path) && loaded.scale == 1.75, "settings roundtrip");
+        Require(loaded.dungeon_map_zoom_prompt.x==-13.25f&&loaded.dungeon_map_zoom_prompt.y==-31.5f&&
+                loaded.dungeon_map_zoom_prompt.scale==.77f,"dungeon zoom prompt pose persists");
+        Require(loaded.dungeon_map_move_prompt.x==14.5f&&loaded.dungeon_map_move_prompt.y==-48.25f&&
+                loaded.dungeon_map_move_prompt.scale==.85f,"dungeon move prompt pose persists");
         Require(loaded.disable_fog,"disable fog persists");
         Require(loaded.stick_click_controls,"stick-click controls persist");
         Require(loaded.depth_of_field.enabled&&loaded.depth_of_field.focus==800.f&&
@@ -464,6 +613,7 @@ int main(int argc, char** argv) {
         Require(loaded.actor_draw_distance==3.f,"actor draw distance persists");
         Require(loaded.weaker_enhanced_defense,"weaker enhanced defense persists");
         Require(loaded.player_hud.banner_y==24,"location banner offset persists");
+        Require(loaded.player_hud.magic_width==1.75f,"magic width persists");
         Require(loaded.player_hud.opacity==.375f&&loaded.player_hud.banner_darkness==.625f&&loaded.minimap_opacity==0.f,"HUD appearance and transparent minimap persist");
         Require(loaded.mute_music, "music mute preference persists");
         Require(loaded.disable_low_health_beep, "low heart mute preference persists");
@@ -505,6 +655,7 @@ int main(int argc, char** argv) {
         Require(!loaded.double_prices&&loaded.price_multiplier==2,"legacy price defaults");
         Require(!loaded.classic_double_time,"legacy restoration defaults off");
         Require(loaded.player_hud.banner_y==0,"legacy banner offset defaults unchanged");
+        Require(loaded.player_hud.magic_width==1.f,"legacy magic width remains unchanged");
         Require(loaded.player_hud.opacity==1.f&&loaded.player_hud.banner_darkness==0.f,"legacy HUD appearance defaults");
         Require(loaded.fullscreen_draws.empty(),"legacy settings clear saved draw");
         Require(loaded.camera_zoom_out == 1.f, "legacy settings restore original FOV");

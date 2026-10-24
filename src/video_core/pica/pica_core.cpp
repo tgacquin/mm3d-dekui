@@ -1097,7 +1097,8 @@ void PicaCore::DrawArrays(bool is_indexed) {
 #ifdef ENABLE_MM3D_PRESENTATION
     const bool cpu_interpolation = MM3D::CameraMidpoint::enabled.load() &&
         (MM3D::CpuInterpolation::Enabled() ||
-         MM3D::GpuInterpolation::NeedsShadedVertices(regs.internal, vs_setup));
+         MM3D::GpuInterpolation::NeedsShadedVertices(regs.internal, vs_setup,
+             MM3D::guest_frames.load(),MM3D::LinkPoseCapture::interpolation_generation.load()));
     cpu_vertex_replay.Begin(0, primitive_assembler.GetTopology());
 #endif
 

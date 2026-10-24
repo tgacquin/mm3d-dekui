@@ -20,6 +20,7 @@
 #include "mm3d/minimap_shortcut.h"
 #include "mm3d/native_inventory.h"
 #include "mm3d/dungeon_map.h"
+#include "mm3d/effect_capture.h"
 #include "mm3d/difficulty.h"
 #include "mm3d/actor_draw_distance.h"
 #include "mm3d/prop_draw_distance.h"
@@ -75,6 +76,7 @@
 #include "mm3d/item_preview.h"
 #include "mm3d/dialogue_scale.h"
 #include "mm3d/message_layout.h"
+#include "mm3d/cursor_interpolation.h"
 #include "mm3d/classic_owl_draw.h"
 #include "mm3d/classic_file_marker.h"
 #include "mm3d/widescreen.h"
@@ -1156,6 +1158,14 @@ public:
                     // Inspect the submitted queues after routing. A stale page
                     // pointer alone cannot keep interpolation active after exit.
                     const u32 menu_owner=inventory_hook.SubmittedInterpolationOwner(guest,regs[0]);
+                    MM3D::DungeonMapInterpolation::Ownership map_ownership{};
+                    if(MM3D::EffectCapture::active.load())
+                        map_ownership={dungeon_map_hook.owner,dungeon_map_hook.panel,menu_owner,dungeon_map_hook.controller,
+                            guest.Read(0x6890f4).value_or(0),guest.Read(0x689148).value_or(0),
+                            guest.Read(0x689150).value_or(0),guest.Read(0x7786f8).value_or(0)};
+                    MM3D::DungeonMapInterpolation::Publish(MM3D::guest_frames.load(),
+                        MM3D::LinkPoseCapture::interpolation_generation.load(),
+                        dungeon_map_hook.InterpolationIdentity(guest,menu_owner),map_ownership);
                     MM3D::InventoryInterpolation::Publish(MM3D::guest_frames.load(),
                         MM3D::LinkPoseCapture::interpolation_generation.load(),menu_owner,
                         inventory_hook.SubmittedInterpolationOwner(guest,regs[0],true));
@@ -1217,15 +1227,32 @@ public:
                  if(root!=regs[4]+8)regs[2]=root;}
                 {const auto root=dungeon_map_hook.PromptRoot(guest,regs[4],regs[13],MM3D::Widescreen::Active());
                  if(root!=regs[4]+8)regs[2]=root;}
-                {const auto root=dungeon_map_hook.PanelRoot(guest,regs[4],regs[13]);
-                 if(root!=regs[4]+8)regs[2]=root;}
-                {const auto root=dungeon_map_hook.ShadowRoot(guest,regs[4],regs[13]);
-                 if(root!=regs[4]+8)regs[2]=root;}
+                {const auto content=regs[2];
+                 regs[2]=dungeon_map_hook.PanelRoot(guest,regs[4],
+                     content!=regs[4]+8?content:regs[13],content);}
+                {const auto content=regs[2];
+                 regs[2]=dungeon_map_hook.ShadowRoot(guest,regs[4],
+                     content!=regs[4]+8?content:regs[13],content);
+                 if(MM3D::EffectCapture::active.load()&&dungeon_map_hook.valid&&dungeon_map_hook.dungeon&&
+                    regs[4]==dungeon_map_hook.backgrounds[1]&&(dungeon_map_hook.pass==1||dungeon_map_hook.pass==2)) {
+                     const auto group=dungeon_map_hook.shadow_scratch.Child(guest,regs[4]+8,"backGround");
+                     const auto pane=group?dungeon_map_hook.shadow_scratch.Child(guest,group,"map_base"):0;
+                     const auto read=[&](u32 at){return guest.Read(at).value_or(0);};
+                     MM3D::EffectCapture::MapShadow sample{MM3D::guest_frames.load(),{
+                         dungeon_map_hook.pass,u32(dungeon_map_hook.border_overlay),u32(MM3D::HudAdjustments::hide_minimap.load()),
+                         u32(regs[2]!=content),read(regs[2]+0x18),pane,
+                         pane?read(pane+0xd4):0,pane?read(pane+0x134):0,pane?read(pane+0xe0):0,
+                         pane?read(pane+0xf4):0,pane?read(pane+0xe4):0,pane?read(pane+0xf0):0,
+                         pane?read(pane+0xec):0,pane?read(pane+0xfc):0,dungeon_map_hook.description_layout,
+                         read(0x7786f8)}};
+                     MM3D::EffectCapture::ObserveMapShadow(sample);
+                 }}
                 regs[2]=map_items_prompt_hook.MapRoot(guest,dungeon_map_hook,regs[4],
                     regs[2]!=regs[4]+8?regs[2]:regs[13],regs[2],MM3D::Widescreen::Active(),
                     parent.system.CoreTiming().GetGlobalTimeUs().count());
                 regs[2]=world_map_prompt_hook.Root(guest,dungeon_map_hook,regs[4],
-                    regs[2]!=regs[4]+8?regs[2]:regs[13],regs[2],MM3D::Widescreen::Active());
+                    regs[2]!=regs[4]+8?regs[2]:regs[13],regs[2],MM3D::Widescreen::Active(),
+                    parent.system.CoreTiming().GetGlobalTimeUs().count());
                 regs[2]=menu_tabs_hook.Root(guest,inventory_hook,regs[4],
                     regs[2]!=regs[4]+8?regs[2]:regs[13],regs[2]);
                 menu_help_hook.source.ResolveDescription(guest,item_preview_hook.owner,inventory_hook.panel);
@@ -1254,10 +1281,14 @@ public:
                 regs[2]=double_time_hook.ShadeRoot(guest,regs[4],regs[2],
                     regs[2]!=regs[4]+8?regs[2]:regs[13]);
                 if(regs[2]!=regs[4]+8)regs[13]=regs[2];
-                if(MM3D::CameraMidpoint::present_60.load())
+                if(MM3D::CameraMidpoint::present_60.load()) {
+                    MM3D::CursorInterpolation::Publish(MM3D::guest_frames.load(),
+                        MM3D::LinkPoseCapture::interpolation_generation.load(),
+                        MM3D::MessageLayout::ReadCursors(guest,regs[4]));
                     MM3D::MessageInterpolation::Publish(MM3D::guest_frames.load(),
                         MM3D::LinkPoseCapture::interpolation_generation.load(),
                         MM3D::MessageLayout::Read(guest,regs[4]));
+                }
                 break;
             case 3:
                 if(const auto sp=double_time_hook.shade_scratch.End(guest))regs[13]=sp;
@@ -1314,6 +1345,7 @@ public:
                 item_present_hook.BeginPromptPose(pose,layout);
                 parent.jit->Regs()[0]=layout+8; // displaced ADD r0,r4,#8
             } else {
+                dungeon_map_hook.RememberDescription(pose,layout);
                 item_present_hook.EndPromptPose(pose);
                 dialogue_hook.End(pose,layout);
                 parent.jit->Regs()[13]+=8; // displaced ADD sp,sp,#8
@@ -1340,6 +1372,17 @@ public:
                 regs[0]=memory.Read32(regs[4]+0x1c);
                 if(dungeon_map_hook.SkipWorld(guest,regs[4]))regs[15]=MM3D::DungeonMap::WorldEnd;
                 break;
+            case 5:
+                dungeon_map_hook.RememberZoom(guest,regs[4],regs[9],regs[0]);
+                regs[14]=MM3D::DungeonMap::PCs[5]+4;regs[15]=MM3D::DungeonMap::SetZoom;
+                break;
+            case 6:
+                regs[0]=dungeon_map_hook.EntryZoom(guest,regs[5]);
+                break; // conditional MOVEQ; the following native BLEQ is preserved
+            case 7:
+                regs[0]=regs[5]+0x35c; // displaced ADD r0,r5,#860
+                regs[15]=MM3D::DungeonMap::OverviewCursorNext(guest,regs[4]);
+                break;
             }
             return;
         }
@@ -1358,7 +1401,9 @@ public:
             } map_memory{memory};
             const auto screen=parent.jit->Regs()[4];
             if (swi==MM3D::NativeMinimap::BeforeSVC) {
-                minimap_hook.Begin(map_memory,screen,MM3D::Minimap::enabled.load(),parent.jit->Regs()[0]);
+                const auto game=parent.jit->Regs()[0];
+                minimap_hook.Begin(map_memory,screen,MM3D::Minimap::enabled.load(),game,
+                    MM3D::MenuBackdrop::Hook::HideGameplayMap(map_memory,game));
             } else {
                 minimap_hook.End(map_memory,screen,MM3D::Minimap::enabled.load(),
                     MM3D::Minimap::scale.load(),MM3D::Minimap::opacity.load(),
