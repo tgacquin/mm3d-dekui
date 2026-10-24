@@ -23,6 +23,7 @@
 #include "mm3d/double_time.h"
 #include "mm3d/song_reset.h"
 #include "mm3d/hud_buttons.h"
+#include "mm3d/hud_item_background.h"
 #include "mm3d/widescreen_probe.h"
 #include "mm3d/banners.h"
 #include "mm3d/song_effect.h"
@@ -126,6 +127,81 @@ void FlipPeakChecks(){
         hook.End(m);assert(m.words==before);
     }
     H::Apply(H::Options{});
+}
+void MirroredItemBackgroundChecks(){
+    namespace B=MM3D::HudItemBackground;
+    namespace H=MM3D::HudAdjustments;
+    for(float scale:{.5f,1.f,2.f}) {
+        Memory m;B::Hook hook;
+        auto layout=m.Layout("HudItemIconSet"),all=m.Widget("all");m.Children(layout+8,{all});
+        const char* groups[]{"icon_item_x_g","icon_item_y_g","icon_item_1_g","icon_item_2_g"};
+        const char* bases[]{"icon_x_base","icon_y_base","icon_1_base","icon_2_base"};
+        std::vector<U32> nodes;std::array<U32,4> owners{},panes{},geometries{};
+        const auto f=[&](U32 at,float v){m.words[at]=std::bit_cast<U32>(v);};
+        const auto read=[&](U32 at){return std::bit_cast<float>(*m.Read(at));};
+        for(unsigned i=0;i<4;++i) {
+            auto group=m.Widget(groups[i]),base=m.Widget(bases[i]),embedded=m.Layout("ItemIconBase");
+            auto pane=m.Widget("bb00_ybtn",350+i*19,55+i*11),geo=m.Alloc(0x7c);
+            nodes.push_back(group);m.Children(group,{base});m.words[base+0x20]=embedded;
+            m.Children(embedded+8,{pane});m.words[pane+0x28]=geo;m.words[geo+4]=6;
+            owners[i]=embedded+8;panes[i]=pane;geometries[i]=geo;
+            // Actual Restoration atlas rectangle, arbitrary native tint/fade
+            // and world transform after HUD positioning/scaling.
+            f(geo+0x14,-19);f(geo+0x18,-19);f(geo+0x20,38);f(geo+0x24,38);
+            f(geo+0x28,48.f/512);f(geo+0x2c,0);f(geo+0x30,38.f/512);f(geo+0x34,38.f/256);
+            m.words[geo+0x10]=0x12345000;f(pane+0xe0,scale);f(pane+0xf4,scale);
+            f(pane+0xe4,.25f);f(pane+0xf0,-.25f);f(pane+0x128,.6f);f(pane+0x134,.4f);
+        }
+        m.Children(all,nodes);
+        auto hud=m.Layout("Hud2"),hudall=m.Widget("all"),group=m.Widget("item_button_g"),set=m.Widget("item_icon_set");
+        m.Children(hud+8,{hudall});m.Children(hudall,{group});m.Children(group,{set});m.words[set+0x20]=layout;
+        // The real B button may share the atlas and geometry. It must retain
+        // the full rectangle even while all four item instances are mirrored.
+        auto actions=m.Layout("Hud"),actual_b=m.Widget("b_action_button");
+        m.Children(actions+8,{actual_b});m.words[actual_b+0x28]=geometries[0];
+        const auto sp=m.Alloc(0x5000)+0x5000;const auto original=m.words;
+        H::Apply(H::FreshDefaults());
+        assert(hook.Root(m,layout,layout+8,sp)==layout+8&&m.words==original);
+        assert(hook.scratch.End(m)==0&&m.words==original);
+        H::mirror_item_buttons=true;
+        assert(hook.Root(m,actions,actions+8,sp)==actions+8&&m.words==original);hook.scratch.End(m);
+        for(U32 target:{layout,hud}) {
+            const auto root=hook.Root(m,target,target+8,sp);assert(root!=target+8);
+            for(unsigned i=0;i<4;++i) {
+                assert(*m.Read(owners[i]+0x18)==2);
+                const auto list=*m.Read(owners[i]+0x14);
+                for(unsigned half=0;half<2;++half) {
+                    const auto pane=*m.Read(list+4*half),geo=*m.Read(pane+0x28);
+                    for(U32 offset:{0xe0u,0xe4u,0xecu,0xf0u,0xf4u,0xfcu,0xd4u,0x128u,0x134u})
+                        assert(*m.Read(pane+offset)==original.at(panes[i]+offset));
+                    assert(read(geo+0x18)==-19.f+half*19&&read(geo+0x24)==19);
+                    assert(read(geo+0x14)==-19&&read(geo+0x20)==38);
+                    assert(read(geo+0x2c)==(half?19.f:38.f)/256);
+                    assert(read(geo+0x34)==(half?19.f:-19.f)/256);
+                    for(U32 offset:{0x10u,0x28u,0x30u})
+                        assert(*m.Read(geo+offset)==original.at(geometries[i]+offset));
+                }
+                // Source geometry and overlaid letters/items never change.
+                for(U32 offset=0;offset<0x7c;offset+=4)
+                    assert(*m.Read(geometries[i]+offset)==original.at(geometries[i]+offset));
+            }
+            auto rendered=m.words;
+            assert(hook.Root(m,layout,layout+8,root)==layout+8&&m.words==rendered);
+            assert(hook.scratch.End(m)==0&&m.words==rendered);
+            assert(hook.scratch.End(m)==sp&&m.words==original);
+        }
+        // Reject incomplete layouts or unavailable stack space without any
+        // partial replacement, even if the earlier three buttons were valid.
+        m.words[geometries[3]+4]=3;auto bad=m.words;
+        assert(hook.Root(m,layout,layout+8,sp)==layout+8&&m.words==bad);hook.scratch.End(m);
+        m.words=original;
+        m.words.erase(sp-4);bad=m.words;
+        assert(hook.Root(m,layout,layout+8,sp)==layout+8&&m.words==bad);hook.scratch.End(m);
+        m.words=original;
+        H::mirror_item_buttons=false;
+        assert(hook.Root(m,layout,layout+8,sp)==layout+8&&m.words==original);hook.scratch.End(m);
+    }
+    H::Apply({});
 }
 void HudButtonChecks(){
     namespace H=MM3D::HudButtons;
@@ -3191,6 +3267,7 @@ int main(int argc,char** argv) {
     SmallGameplayMapChecks();
     FlipPeakChecks();
     HudButtonChecks();
+    MirroredItemBackgroundChecks();
     FullscreenEffectsChecks();
     SongResetChecks();
     BannerChecks();

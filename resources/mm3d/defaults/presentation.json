@@ -684,5 +684,6 @@
   "dungeon_map_prompts_scale": 0.6899999976158142,
   "dungeon_map_prompts_icon_scale": 0.8999999761581421,
   "dungeon_map_prompts_spacing": 15.100000381469727,
-  "player_hud_layout_version": 1
+  "player_hud_layout_version": 1,
+  "player_hud_mirror_item_buttons": false
 }

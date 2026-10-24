@@ -10,7 +10,7 @@ inline constexpr std::array<const char*,Count> Keys{"dpad","magic","hearts","but
 inline constexpr std::array<const char*,Count> Labels{"D-pad","Magic meter","Hearts","Buttons","Minimap","Clock","Rupees","Minigame counter","Epona carrots","Timer"};
 inline constexpr std::array<const char*,6> ButtonKeys{"x","y","i","ii","a","b"};
 inline constexpr std::array<const char*,6> ButtonLabels{"X","Y","I","II","A","B"};
-struct Options {float opacity=1.f,banner_darkness=0.f;std::array<int,6> button_x{},button_y{};bool hide_minimap=false;bool hide_menu_prompts=false;int banner_y=0;int overall=0,top=0,bottom=0,heart_spacing=0,magic_height_steps=0;std::array<int,Count> elements{},x{},y{};float magic_width=1.f;int base_scale=0;unsigned layout_version=0;};
+struct Options {float opacity=1.f,banner_darkness=0.f;std::array<int,6> button_x{},button_y{};bool hide_minimap=false;bool hide_menu_prompts=false;int banner_y=0;int overall=0,top=0,bottom=0,heart_spacing=0,magic_height_steps=0;std::array<int,Count> elements{},x{},y{};float magic_width=1.f;int base_scale=0;unsigned layout_version=0;bool mirror_item_buttons=false;};
 // Version 0 keeps existing profiles and their original F2 reference points.
 // Version 1 stores the arranged layout directly; F2 displays offsets from it.
 // Rendering always consumes the same absolute values, avoiding re-scaling or
@@ -33,7 +33,7 @@ inline int BannerY(){return std::clamp(banner_y.load(),-240,240);}
 inline float Unit(float v,float fallback){return std::isfinite(v)?std::clamp(v,0.f,1.f):fallback;}
 inline float Opacity(){return Unit(opacity.load(),1.f);}
 inline float BannerBrightness(){return 1.f-Unit(banner_darkness.load(),0.f);}
-inline std::atomic<bool> hide_menu_prompts{false},hide_minimap{false};
+inline std::atomic<bool> hide_menu_prompts{false},hide_minimap{false},mirror_item_buttons{false};
 // CPU shortcut updates visibility immediately; the render/UI thread consumes
 // the request to synchronize its checkbox and persist the ordinary HUD setting.
 inline std::atomic<int> minimap_visibility_request{-1};
@@ -56,7 +56,7 @@ inline int X(Part part){return std::clamp(x[part].load(),-400,400);}
 inline int Y(Part part){return std::clamp(y[part].load(),-240,240);}
 inline int Top(){return std::clamp(top.load(),0,40);}
 inline int Bottom(){return std::clamp(bottom.load(),0,40);}
-inline void Apply(const Options& o){hide_minimap=o.hide_minimap;
+inline void Apply(const Options& o){hide_minimap=o.hide_minimap;mirror_item_buttons=o.mirror_item_buttons;
     opacity=Unit(o.opacity,1.f);banner_darkness=Unit(o.banner_darkness,0.f);banner_y=std::clamp(o.banner_y,-240,240);
     for(unsigned i=0;i<6;++i){button_x[i]=std::clamp(o.button_x[i],-400,400);button_y[i]=std::clamp(o.button_y[i],-240,240);}
     hide_menu_prompts=o.hide_menu_prompts;base_scale=std::clamp(o.base_scale,-10,10);overall=o.overall;top=o.top;bottom=o.bottom;

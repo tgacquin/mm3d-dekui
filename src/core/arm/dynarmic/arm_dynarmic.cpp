@@ -49,6 +49,7 @@
 #include "mm3d/double_time.h"
 #include "mm3d/song_reset.h"
 #include "mm3d/hud_buttons.h"
+#include "mm3d/hud_item_background.h"
 #include "mm3d/banners.h"
 #include "mm3d/banner_interpolation.h"
 #include "mm3d/song_effect.h"
@@ -191,6 +192,7 @@ public:
     MM3D::ClassicDoubleTime::Hook classic_double_time_hook;
     MM3D::SongReset::Hook song_reset_hook;
     MM3D::HudButtons::Hook hud_buttons_hook;
+    MM3D::HudItemBackground::Hook hud_item_background_hook;
     MM3D::Banners::Hook banner_hook;
     MM3D::NativeItemPresent::Hook item_present_hook;
     MM3D::NativeStartup::Hook startup_hook;
@@ -1280,6 +1282,8 @@ public:
                 }
                 regs[2]=double_time_hook.ShadeRoot(guest,regs[4],regs[2],
                     regs[2]!=regs[4]+8?regs[2]:regs[13]);
+                regs[2]=hud_item_background_hook.Root(guest,regs[4],regs[2],
+                    regs[2]!=regs[4]+8?regs[2]:regs[13]);
                 if(regs[2]!=regs[4]+8)regs[13]=regs[2];
                 if(MM3D::CameraMidpoint::present_60.load()) {
                     MM3D::CursorInterpolation::Publish(MM3D::guest_frames.load(),
@@ -1291,6 +1295,7 @@ public:
                 }
                 break;
             case 3:
+                if(const auto sp=hud_item_background_hook.scratch.End(guest))regs[13]=sp;
                 if(const auto sp=double_time_hook.shade_scratch.End(guest))regs[13]=sp;
                 classic_save_hook.EndCycleDraw(guest);
                 if(const auto sp=classic_owl_draw.End(guest))regs[13]=sp;

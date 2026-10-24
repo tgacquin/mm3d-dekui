@@ -1260,7 +1260,8 @@
     "dungeon_map_prompts_scale": 0.6899999976158142,
     "dungeon_map_prompts_icon_scale": 0.8999999761581421,
     "dungeon_map_prompts_spacing": 15.100000381469727,
-    "player_hud_layout_version": 1
+    "player_hud_layout_version": 1,
+    "player_hud_mirror_item_buttons": false
   },
   "legacy_fallbacks": {
     "song_banner_scale": 1,
@@ -1334,7 +1335,7 @@
   ],
   "profile_hashes": {
     "notebook.json": "2eec6780836b0a6ee2d8b413b98d64e6421269224973745a8ec70cc92eca0d40",
-    "presentation.json": "152781b640a7c1390484016b5f4a61cd5f4d4605acac59c27f82678a26388436"
+    "presentation.json": "c1b21b599ccac1e4e018d6b81397f0589f047b18a0b7d078f41ea9a20428421a"
   },
   "retired_profiles": {
     "config/mm3d-local/title-screen/version.json": "b88f3593ac34151989590bd439405bced9d76f3ab73b5638f4362d0d26b5f65f",

@@ -873,6 +873,8 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 if(ImGui::Button("Reset")){value=fallback;changed=true;}
                 ImGui::PopID();
             };
+            changed|=ImGui::Checkbox("Mirror item button backgrounds",&hud.mirror_item_buttons);
+            hover_help("Mirrors the lower half of the X/Y/I/II backgrounds to hide the original B lettering. A and B stay unchanged.");
             if(PlayerOverlay())scale_control("Overall HUD scale",hud.overall);
             else {
                 scale_control("Base HUD scale",hud.base_scale);

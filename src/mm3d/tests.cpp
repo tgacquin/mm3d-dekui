@@ -79,6 +79,23 @@ int main(int argc, char** argv) {
             }
         }
         {
+            QTemporaryDir directory;const auto path=directory.filePath("hud-background.json");
+            MM3D::Settings settings;
+            Require(!settings.player_hud.mirror_item_buttons,"mirrored item backgrounds default off");
+            QFile file(path);Require(file.open(QIODevice::WriteOnly),"legacy background fixture");
+            file.write("{\"version\":1}");file.close();
+            Require(settings.Load(path)&&!settings.player_hud.mirror_item_buttons,"old profiles keep full button backgrounds");
+            for(bool enabled:{true,false}) {
+                settings.player_hud.mirror_item_buttons=enabled;
+                Require(settings.Save(path),"background preference saves");
+                MM3D::Settings loaded;Require(loaded.Load(path)&&loaded.player_hud.mirror_item_buttons==enabled,
+                    "background preference survives restart");
+            }
+            settings.player_hud.mirror_item_buttons=true;
+            MM3D::HudAdjustments::ResetPlayer(settings.player_hud);
+            Require(!settings.player_hud.mirror_item_buttons,"HUD reset restores full button backgrounds");
+        }
+        {
             QTemporaryDir directory;
             const auto path=directory.filePath("map-prompts.json");
             for(bool customized:{false,true}) {

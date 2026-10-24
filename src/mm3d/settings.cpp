@@ -308,6 +308,7 @@ bool Settings::Load(const QString& path) {
         b.scale=value((prefix+"scale").toUtf8().constData(),1.f,.25f,2.f);
     }
     player_hud.layout_version=object.value("player_hud_layout_version").toInt(0)==1?1:0;
+    player_hud.mirror_item_buttons=object.value("player_hud_mirror_item_buttons").toBool(false);
     player_hud.opacity=value("player_hud_opacity",1.f,0.f,1.f);
     player_hud.banner_darkness=value("player_hud_banner_darkness",0.f,0.f,1.f);
     player_hud.banner_y=int(value("player_hud_banner_y",0.f,-240.f,240.f));
@@ -476,6 +477,7 @@ bool Settings::Save(const QString& path) const {
     object.insert("actor_draw_distance",ActorDrawDistance::Clamp(actor_draw_distance));
     object.insert("weaker_enhanced_defense",weaker_enhanced_defense);
     object.insert("player_hud_layout_version",int(player_hud.layout_version));
+    object.insert("player_hud_mirror_item_buttons",player_hud.mirror_item_buttons);
     object.insert("player_hud_opacity",player_hud.opacity);
     object.insert("player_hud_banner_darkness",player_hud.banner_darkness);
     object.insert("player_hud_banner_y",player_hud.banner_y);
