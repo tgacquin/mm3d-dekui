@@ -37,17 +37,33 @@ int main(int argc, char** argv) {
                 file.close();
                 MM3D::Settings old;Require(old.Load(path),"legacy HUD loads");
                 Require(old.player_hud.layout_version==0&&old.player_hud.base_scale==0&&old.player_hud.overall==steps&&
-                        old.player_hud.heart_spacing==0&&old.player_hud.elements[MM3D::HudAdjustments::Hearts]==0,
+                        old.player_hud.heart_spacing==0&&old.player_hud.left==0&&old.player_hud.right==0&&old.player_hud.elements[MM3D::HudAdjustments::Hearts]==0,
                         "legacy HUD size and user choice stay unchanged");
                 Require(old.Save(path),"legacy HUD saves");
                 MM3D::Settings again;Require(again.Load(path),"legacy HUD reloads");
                 Require(again.player_hud.layout_version==0&&again.player_hud.base_scale==0&&again.player_hud.overall==steps,
                         "legacy HUD is not enlarged after restarting");
             }
+            // An existing arranged profile retains both its actual values and
+            // the reference values used by F2, including after save/reload.
+            MM3D::Settings version_one;
+            version_one.player_hud=MM3D::HudAdjustments::VersionOneDefaults();
+            version_one.player_hud.elements[MM3D::HudAdjustments::Hearts]+=2;
+            Require(version_one.Save(path),"previous arranged profile saves");
+            MM3D::Settings upgraded;Require(upgraded.Load(path),"previous arranged profile loads");
+            const auto previous_ui=MM3D::HudAdjustments::UiDefaults(upgraded.player_hud,true);
+            Require(upgraded.player_hud.layout_version==1&&
+                    upgraded.player_hud.elements==version_one.player_hud.elements&&
+                    upgraded.player_hud.heart_spacing==-17&&upgraded.player_hud.magic_height_steps==-4&&
+                    upgraded.player_hud.y[MM3D::HudAdjustments::Magic]==5&&
+                    upgraded.player_hud.elements[MM3D::HudAdjustments::Rupees]==2&&
+                    upgraded.player_hud.elements[MM3D::HudAdjustments::Hearts]-previous_ui.elements[MM3D::HudAdjustments::Hearts]==2&&
+                    !upgraded.player_hud.mirror_item_buttons,
+                    "existing arranged HUD and F2 readouts remain unchanged");
             fresh.player_hud.overall=-3;
             Require(fresh.Save(path),"relative HUD scale saves");
             MM3D::Settings restored;Require(restored.Load(path),"relative HUD scale loads");
-            Require(restored.player_hud.layout_version==1&&restored.player_hud.base_scale==2&&restored.player_hud.overall==-3&&
+            Require(restored.player_hud.layout_version==2&&restored.player_hud.base_scale==2&&restored.player_hud.overall==-3&&
                     restored.player_hud.x==fresh.player_hud.x&&restored.player_hud.elements==fresh.player_hud.elements&&
                     restored.player_hud.magic_width==fresh.player_hud.magic_width&&restored.minimap_opacity==.75f,
                     "editor baseline and user offset persist independently");
@@ -56,13 +72,13 @@ int main(int argc, char** argv) {
                     "F2 reset retains the editor baseline");
             restored.player_hud={};restored.player_hud.hide_menu_prompts=true;
             MM3D::HudAdjustments::ResetPlayer(restored.player_hud);
-            Require(restored.player_hud.layout_version==1&&restored.player_hud.hide_menu_prompts&&
+            Require(restored.player_hud.layout_version==2&&restored.player_hud.hide_menu_prompts&&
                     restored.player_hud.x==fresh.player_hud.x&&restored.player_hud.y==fresh.player_hud.y&&
                     restored.player_hud.elements==fresh.player_hud.elements&&
                     restored.player_hud.heart_spacing==fresh.player_hud.heart_spacing,
                     "explicit reset adopts arranged defaults without changing menu prompt preference");
             Require(restored.Save(path),"reset HUD saves");
-            MM3D::Settings reset;Require(reset.Load(path)&&reset.player_hud.layout_version==1,
+            MM3D::Settings reset;Require(reset.Load(path)&&reset.player_hud.layout_version==2,
                     "reset layout survives restart");
             // CTest supplies the shipped profile to prevent UI/reset baselines
             // silently drifting away from fresh-install defaults.
@@ -72,16 +88,17 @@ int main(int argc, char** argv) {
                 Require(h.layout_version==f.layout_version&&h.base_scale==f.base_scale&&h.overall==f.overall&&
                         h.elements==f.elements&&h.x==f.x&&h.y==f.y&&h.button_x==f.button_x&&h.button_y==f.button_y&&
                         h.magic_width==f.magic_width&&h.magic_height_steps==f.magic_height_steps&&
-                        h.heart_spacing==f.heart_spacing&&h.top==f.top&&h.bottom==f.bottom&&
+                        h.heart_spacing==f.heart_spacing&&h.top==f.top&&h.bottom==f.bottom&&h.left==f.left&&h.right==f.right&&
                         h.opacity==f.opacity&&h.banner_y==f.banner_y&&h.banner_darkness==f.banner_darkness&&
-                        h.hide_minimap==f.hide_minimap&&shipped.minimap_opacity==fresh.minimap_opacity,
+                        h.hide_minimap==f.hide_minimap&&h.mirror_item_buttons==f.mirror_item_buttons&&
+                        shipped.minimap_opacity==fresh.minimap_opacity,
                         "shipped HUD arrangement exactly matches neutral F2 and reset defaults");
             }
         }
         {
             QTemporaryDir directory;const auto path=directory.filePath("hud-background.json");
             MM3D::Settings settings;
-            Require(!settings.player_hud.mirror_item_buttons,"mirrored item backgrounds default off");
+            Require(settings.player_hud.mirror_item_buttons,"fresh installs use mirrored item backgrounds");
             QFile file(path);Require(file.open(QIODevice::WriteOnly),"legacy background fixture");
             file.write("{\"version\":1}");file.close();
             Require(settings.Load(path)&&!settings.player_hud.mirror_item_buttons,"old profiles keep full button backgrounds");
@@ -91,9 +108,19 @@ int main(int argc, char** argv) {
                 MM3D::Settings loaded;Require(loaded.Load(path)&&loaded.player_hud.mirror_item_buttons==enabled,
                     "background preference survives restart");
             }
-            settings.player_hud.mirror_item_buttons=true;
+            for(int padding:{-100,-13,0,27,100}) {
+                settings.player_hud.left=padding;settings.player_hud.right=-padding;
+                settings.player_hud.top=padding/3;settings.player_hud.bottom=-padding/3;
+                Require(settings.Save(path),"signed HUD padding saves");
+                MM3D::Settings loaded;Require(loaded.Load(path)&&loaded.player_hud.left==padding&&
+                    loaded.player_hud.right==-padding&&loaded.player_hud.top==padding/3&&loaded.player_hud.bottom==-padding/3,
+                    "all signed HUD padding survives restart");
+            }
+            settings.player_hud.mirror_item_buttons=false;
             MM3D::HudAdjustments::ResetPlayer(settings.player_hud);
-            Require(!settings.player_hud.mirror_item_buttons,"HUD reset restores full button backgrounds");
+            Require(settings.player_hud.mirror_item_buttons&&settings.player_hud.left==0&&settings.player_hud.right==0&&
+                    settings.player_hud.top==0&&settings.player_hud.bottom==0,
+                    "explicit HUD reset adopts current background default and clears padding");
         }
         {
             QTemporaryDir directory;

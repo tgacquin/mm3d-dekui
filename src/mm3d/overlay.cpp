@@ -27,6 +27,7 @@
 #endif
 #include "mm3d/diagnostics.h"
 #include "mm3d/layout_reset.h"
+#include "mm3d/shader_cache_reset.h"
 #include "mm3d/classic_saving.h"
 #include "mm3d/classic_double_time.h"
 #include "mm3d/audio_capture.h"
@@ -874,7 +875,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 ImGui::PopID();
             };
             changed|=ImGui::Checkbox("Mirror item button backgrounds",&hud.mirror_item_buttons);
-            hover_help("Mirrors the lower half of the X/Y/I/II backgrounds to hide the original B lettering. A and B stay unchanged.");
+            hover_help("Mirrors the lower half of the X/Y/I/II backgrounds to hide the original B lettering. A and B stay unchanged.\n\nNOTE: May not look good with texture packs since button textures may not be vertically symmetrical.");
             if(PlayerOverlay())scale_control("Overall HUD scale",hud.overall);
             else {
                 scale_control("Base HUD scale",hud.base_scale);
@@ -948,11 +949,15 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                     ImGui::EndTabItem();
                 }
                 if(ImGui::BeginTabItem("Padding")) {
-                    changed|=ImGui::SliderInt("Top padding",&hud.top,0,40,"%d",ImGuiSliderFlags_AlwaysClamp);
-                    help_text("Moves the upper HUD down.");
-                    changed|=ImGui::SliderInt("Bottom padding",&hud.bottom,0,40,"%d",ImGuiSliderFlags_AlwaysClamp);
-                    help_text("Moves the lower HUD up.");
-                    if(ImGui::Button("Reset padding")){hud.top=0;hud.bottom=0;changed=true;}
+                    changed|=ImGui::SliderInt("Top padding",&hud.top,-HudAdjustments::VerticalPaddingLimit,HudAdjustments::VerticalPaddingLimit,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                    help_text("Moves the upper HUD down with positive values or up with negative values. 0 keeps the default placement.");
+                    changed|=ImGui::SliderInt("Bottom padding",&hud.bottom,-HudAdjustments::VerticalPaddingLimit,HudAdjustments::VerticalPaddingLimit,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                    help_text("Moves the lower HUD up with positive values or down with negative values. 0 keeps the default placement.");
+                    changed|=ImGui::SliderInt("Left padding",&hud.left,-HudAdjustments::SidePaddingLimit,HudAdjustments::SidePaddingLimit,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                    help_text("Moves the hearts, magic meter, D-pad and rupee/key counter. Positive moves right (inward); negative moves left (outward). 0 keeps the default placement.");
+                    changed|=ImGui::SliderInt("Right padding",&hud.right,-HudAdjustments::SidePaddingLimit,HudAdjustments::SidePaddingLimit,"%+d",ImGuiSliderFlags_AlwaysClamp);
+                    help_text("Moves the buttons, minigame counter and minimap. Positive moves left (inward); negative moves right (outward). 0 keeps the default placement.");
+                    if(ImGui::Button("Reset padding")){hud.top=0;hud.bottom=0;hud.left=0;hud.right=0;changed=true;}
                     ImGui::EndTabItem();
                 }
                 ImGui::EndTabBar();
@@ -1009,6 +1014,19 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
             ImGui::TextUnformatted(Translation::active.load() ? "Imported translation active this session" : "Standard resources active this session");
         };
         const auto general_controls=[&]() {
+            static QString shader_reset_error;
+            if(ImGui::Button("Reset shader cache (restart required)")) {
+                const auto error=ShaderCacheReset::Request(state.directory);
+                shader_reset_error=error;
+                state.status=error.isEmpty()?"Shader cache reset scheduled. Close and reopen Dekui to apply.":error;
+            }
+            hover_help("Clears this game's shader and pipeline caches on the next launch. Shaders will rebuild as you play, which may temporarily increase stuttering. Saves, settings and texture packs are kept.");
+            if(!shader_reset_error.isEmpty())
+                ImGui::TextWrapped("%s",shader_reset_error.toUtf8().constData());
+            else if(ShaderCacheReset::Pending(state.directory))
+                ImGui::TextWrapped("Shader cache reset scheduled. Close and reopen Dekui to apply.");
+            else if(ShaderCacheReset::completed.load())
+                ImGui::TextWrapped("Shader cache reset complete. Shaders will rebuild as you play.");
 #ifdef ENABLE_MM3D_GAME_FOLDER
             static QString menu_reset_status;
             if(ImGui::Button("Reset menu layouts")) {
@@ -2880,7 +2898,7 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
         ImGui::SliderFloat("Opacity", &state.settings.opacity, .2f, 1.f);
         ImGui::SliderFloat("Indicator X (normalized)", &state.settings.x, 0.f, .75f);
         ImGui::SliderFloat("Indicator Y (normalized)", &state.settings.y, 0.f, .9f);
-        ImGui::TextUnformatted("All available settings apply live; no restart needed.");
+        ImGui::TextUnformatted("Settings apply live unless marked as requiring a restart.");
         ImGui::Separator();
         ImGui::TextUnformatted("Form camera capture (Link/Goron/Zora/Deku)");
         ImGui::TextWrapped("Start before reproducing a camera issue, then stop afterward. For Deku, include burrowing, flight, C-stick movement, petal release and landing.");

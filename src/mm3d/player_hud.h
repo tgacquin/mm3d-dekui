@@ -243,7 +243,7 @@ struct Hook {
             }
             if(g.part==Dpad){mapping.tx+=dpad_x.load();mapping.ty+=dpad_y.load();}
             // User offsets are screen-space pixels, after scale and padding.
-            mapping.tx+=X(g.part);mapping.ty+=Y(g.part);
+            mapping.tx+=HorizontalPadding(g.part)+X(g.part);mapping.ty+=Y(g.part);
             if(mapping.xx==1&&mapping.yy==1&&mapping.tx==0&&mapping.ty==0)continue;
             std::vector<U32> seen;
             for(auto n:g.roots)if(!helper.Transform(m,n,writes,seen,mapping))return;

@@ -5,6 +5,7 @@
 #endif
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/player_settings.h"
+#include "mm3d/shader_cache_reset.h"
 #include "mm3d/translation.h"
 #include "mm3d/player_settings_bridge.h"
 #include "citra_qt/configuration/configure_cheats.h"
@@ -1841,6 +1842,23 @@ void GMainWindow::BootGame(const QString& filename) {
     u64 title_id{0};
     Loader::ResultStatus res =
         loader ? loader->ReadProgramId(title_id) : Loader::ResultStatus::Error;
+
+#ifdef ENABLE_MM3D_PRESENTATION
+    // BootGame has already joined/shut down the previous emulation session.
+    // Reset before system.Load creates a renderer or reads its disk caches.
+    if (res == Loader::ResultStatus::Success) {
+        const auto reset = MM3D::ShaderCacheReset::ApplyPending(
+            QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::ConfigDir)) + QStringLiteral("mm3d-local/"),
+            QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::ShaderDir)), title_id, emu_thread != nullptr || system.IsPoweredOn());
+        if (!reset.error.isEmpty()) {
+            LOG_ERROR(Frontend, "Shader cache reset failed: {}", reset.error.toStdString());
+            QMessageBox::warning(this, tr("Shader cache reset"), reset.error +
+                tr("\n\nThe reset remains pending. The game will continue using any remaining cache files."));
+        } else if (reset.reset) {
+            LOG_INFO(Frontend, "Reset MM3D shader and pipeline caches before renderer startup");
+        }
+    }
+#endif
 
     if (Loader::ResultStatus::Success == res) {
         // Load per game settings

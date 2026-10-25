@@ -307,7 +307,8 @@ bool Settings::Load(const QString& path) {
         b.y=value((prefix+"y").toUtf8().constData(),0.f,-240.f,240.f);
         b.scale=value((prefix+"scale").toUtf8().constData(),1.f,.25f,2.f);
     }
-    player_hud.layout_version=object.value("player_hud_layout_version").toInt(0)==1?1:0;
+    const int hud_layout_version=object.value("player_hud_layout_version").toInt(0);
+    player_hud.layout_version=hud_layout_version>=1&&hud_layout_version<=2?hud_layout_version:0;
     player_hud.mirror_item_buttons=object.value("player_hud_mirror_item_buttons").toBool(false);
     player_hud.opacity=value("player_hud_opacity",1.f,0.f,1.f);
     player_hud.banner_darkness=value("player_hud_banner_darkness",0.f,0.f,1.f);
@@ -327,8 +328,10 @@ bool Settings::Load(const QString& path) {
     // Do not apply the new-install baseline on top of it.
     player_hud.base_scale=int(value("player_hud_base_scale",0,-10,10));
     player_hud.overall=int(value("player_hud_scale",0,-10,10));
-    player_hud.top=int(value("player_hud_top_padding",0,0,40));
-    player_hud.bottom=int(value("player_hud_bottom_padding",0,0,40));
+    player_hud.top=int(value("player_hud_top_padding",0,-HudAdjustments::VerticalPaddingLimit,HudAdjustments::VerticalPaddingLimit));
+    player_hud.bottom=int(value("player_hud_bottom_padding",0,-HudAdjustments::VerticalPaddingLimit,HudAdjustments::VerticalPaddingLimit));
+    player_hud.left=int(value("player_hud_left_padding",0,-HudAdjustments::SidePaddingLimit,HudAdjustments::SidePaddingLimit));
+    player_hud.right=int(value("player_hud_right_padding",0,-HudAdjustments::SidePaddingLimit,HudAdjustments::SidePaddingLimit));
     for(unsigned i=0;i<HudAdjustments::Count;++i) {
         const auto key=QString("player_hud_%1_scale").arg(HudAdjustments::Keys[i]).toUtf8();
         player_hud.elements[i]=int(value(key.constData(),0,-10,10));
@@ -496,6 +499,8 @@ bool Settings::Save(const QString& path) const {
     object.insert("player_hud_scale",player_hud.overall);
     object.insert("player_hud_top_padding",player_hud.top);
     object.insert("player_hud_bottom_padding",player_hud.bottom);
+    object.insert("player_hud_left_padding",player_hud.left);
+    object.insert("player_hud_right_padding",player_hud.right);
     for(unsigned i=0;i<HudAdjustments::Count;++i) {
         const auto prefix=QString("player_hud_%1_").arg(HudAdjustments::Keys[i]);
         object.insert(prefix+"scale",player_hud.elements[i]);

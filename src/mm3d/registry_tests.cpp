@@ -74,7 +74,7 @@ int main(int argc,char** argv) try {
       snapshot.write("{\"version\":1,\"enabled\":true,\"name\":\"not a profile\"}"); }
     Profiles::Load(directory.path().toStdString());
     Check(Profiles::List().empty(),"settings snapshots excluded from profile registry");
-    for(const int layout_version : {1, 2, 3}) {
+    for(const int layout_version : {1, 2, 3, 4}) {
         QTemporaryDir reset_directory;
         const auto user=reset_directory.path()+"/";
         QDir().mkpath(user+"setup");

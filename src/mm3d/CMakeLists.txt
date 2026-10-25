@@ -59,6 +59,12 @@ add_test(NAME mm3d_inventory_interpolation COMMAND mm3d_inventory_interpolation_
 add_executable(mm3d_classic_save_tests classic_save_store_tests.cpp)
 target_link_libraries(mm3d_classic_save_tests PRIVATE Qt6::Core)
 add_test(NAME mm3d_classic_save_storage COMMAND mm3d_classic_save_tests)
+add_executable(mm3d_shader_cache_reset_tests shader_cache_reset_tests.cpp)
+target_link_libraries(mm3d_shader_cache_reset_tests PRIVATE Qt6::Core)
+# Match the frontend flags: this helper is also included by citra_qt.
+target_compile_definitions(mm3d_shader_cache_reset_tests PRIVATE
+    QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII QT_USE_QSTRINGBUILDER)
+add_test(NAME mm3d_shader_cache_reset COMMAND mm3d_shader_cache_reset_tests)
 add_executable(mm3d_classic_saving_tests classic_saving_tests.cpp classic_saving.cpp)
 target_include_directories(mm3d_classic_saving_tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(mm3d_classic_saving_tests PRIVATE Qt6::Core)

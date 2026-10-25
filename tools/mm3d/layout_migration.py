@@ -3,9 +3,9 @@ import copy
 import json
 import math
 
-# Re-run for installations that already migrated their photo placement but
-# retained serialized mask fallbacks and the former shipped HUD defaults.
-VERSION = 3
+# Revision 4 upgrades only stock dungeon arrows/widgets for revision-3 users.
+# Older layout migrations must not run again over their later customizations.
+VERSION = 4
 CONFIG = 'config/mm3d-local/presentation.json'
 BASELINE = 'setup/layout-baseline.json'
 RESOURCE = 'layout-migration.json'
@@ -43,7 +43,7 @@ def policy(resources):
     return data
 
 
-def migrate(raw, data):
+def migrate(raw, data, from_version=0):
     if len(raw)>1024*1024:
         raise ValueError('Presentation settings exceed the supported size; original retained')
     def invalid_constant(value):
@@ -54,34 +54,54 @@ def migrate(raw, data):
     original = copy.deepcopy(obj)
     old, current = data['previous'], data['current']
     retained = []
-    for name, prefixes in GROUPS.items():
-        keys = [k for k in current if k.startswith(prefixes)]
-        # These newly introduced values can have been serialized by beta.2's
-        # old loader before the first migration. Match the whole shipped group,
-        # not isolated fields of a customized layout.
-        expected = dict(old)
-        expected.update(data['legacy_fallbacks'])
-        # Older loaders serialized inherited item/dialogue settings into the
-        # new mask keys. Recognize only documented complete fallback groups.
-        candidates = [expected, *data.get('legacy_group_defaults', {}).get(name, [])]
-        if any(all(k not in obj or close(obj[k], candidate.get(k, current[k])) or
-                   close(obj[k], current[k]) for k in keys) for candidate in candidates):
-            for k in keys:
+    widget_keys = {k for group in data['legacy_dungeon_widgets'].values() for k in group}
+    if from_version < 3:
+        for name, prefixes in GROUPS.items():
+            keys = [k for k in current if k.startswith(prefixes)]
+            # These newly introduced values can have been serialized by beta.2's
+            # old loader before the first migration. Match the whole shipped group,
+            # not isolated fields of a customized layout.
+            expected = dict(old)
+            expected.update(data['legacy_fallbacks'])
+            # Older loaders serialized inherited item/dialogue settings into the
+            # new mask keys. Recognize only documented complete fallback groups.
+            candidates = [expected, *data.get('legacy_group_defaults', {}).get(name, [])]
+            if any(all(k not in obj or close(obj[k], candidate.get(k, current[k])) or
+                       close(obj[k], current[k]) for k in keys) for candidate in candidates):
+                for k in keys:
+                    obj[k] = current[k]
+            else:
+                retained.append(name)
+        # Update only the exact previously shipped fade rules. A user may have
+        # deliberately removed a rule or added their own; preserve that whole list.
+        previous_rules = data.get('previous_fullscreen_draws')
+        if isinstance(previous_rules, list) and obj.get('fullscreen_draws') == previous_rules:
+            obj['fullscreen_draws'] = copy.deepcopy(current['fullscreen_draws'])
+        # Absent keys receive release defaults, except preferences whose legacy
+        # default must differ from a new installation (such as stick-click controls).
+        # Existing choices, unknown keys and ambiguous layout groups stay unchanged.
+        held_prefixes = tuple(p for name in retained for p in GROUPS[name])
+        for k, v in current.items():
+            if k not in obj and k not in data['legacy_arrow_defaults'] and k not in widget_keys and k not in data.get('fresh_install_only', []) and not (held_prefixes and k.startswith(held_prefixes)):
+                obj[k] = data.get('existing_install_defaults', {}).get(k, v)
+    # Match the entire old arrow layout, not individual default-valued fields
+    # inside a customized arrangement. These legacy values are exactly 0/1;
+    # even a tiny explicit non-default adjustment must be retained.
+    arrows = data['legacy_arrow_defaults']
+    if all(k not in obj or (type(obj[k]) in (int, float) and obj[k] == v)
+           for k, v in arrows.items()):
+        for k in arrows:
+            obj[k] = current[k]
+    elif any(k not in obj or not close(obj[k], current[k]) for k in arrows):
+        retained.append('dungeon_map_arrows')
+    for name, previous in data['legacy_dungeon_widgets'].items():
+        # An incomplete pose has native/inherited fallbacks; do not invent the
+        # missing pieces or partially move a customized widget.
+        if all(k in obj and close(obj[k], v) for k, v in previous.items()):
+            for k in previous:
                 obj[k] = current[k]
-        else:
+        elif not all(k in obj and close(obj[k], current[k]) for k in previous):
             retained.append(name)
-    # Update only the exact previously shipped fade rules. A user may have
-    # deliberately removed a rule or added their own; preserve that whole list.
-    previous_rules = data.get('previous_fullscreen_draws')
-    if isinstance(previous_rules, list) and obj.get('fullscreen_draws') == previous_rules:
-        obj['fullscreen_draws'] = copy.deepcopy(current['fullscreen_draws'])
-    # Absent keys receive release defaults, except preferences whose legacy
-    # default must differ from a new installation (such as stick-click controls).
-    # Existing choices, unknown keys and ambiguous layout groups stay unchanged.
-    held_prefixes = tuple(p for name in retained for p in GROUPS[name])
-    for k, v in current.items():
-        if k not in obj and k not in data.get('fresh_install_only', []) and not (held_prefixes and k.startswith(held_prefixes)):
-            obj[k] = data.get('existing_install_defaults', {}).get(k, v)
     return (raw if obj == original else (json.dumps(obj, indent=2)+'\n').encode()), retained
 
 

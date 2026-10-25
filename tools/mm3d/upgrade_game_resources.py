@@ -197,21 +197,23 @@ def upgrade(root, rom, restoration):
         resume(user)
         ready = json.loads(checked(user, READY).read_bytes())
         changes = {}
-        if ready.get('layout_version', 0) < layout_migration.VERSION:
+        previous_layout_version = ready.get('layout_version', 0)
+        if previous_layout_version < layout_migration.VERSION:
             config = checked(user, layout_migration.CONFIG)
             if config.exists():
                 old = config.read_bytes()
-                new, retained = layout_migration.migrate(old, layout_policy)
+                new, retained = layout_migration.migrate(old, layout_policy, previous_layout_version)
                 if new != old:
                     changes[layout_migration.CONFIG] = new
             else:
                 changes[layout_migration.CONFIG], retained = layout_migration.migrate(
-                    b'{"version":1}', layout_policy)
+                    b'{"version":1}', layout_policy, previous_layout_version)
             changes[layout_migration.BASELINE] = layout_migration.baseline(layout_policy, retained)
-            for relative, sha in layout_policy['retired_profiles'].items():
-                target = checked(user, relative)
-                if target.is_file() and digest(target.read_bytes().replace(b'\r\n', b'\n')) == sha:
-                    changes[relative] = None  # Exact disabled stock profiles only; backed up first.
+            if previous_layout_version < 3:
+                for relative, sha in layout_policy['retired_profiles'].items():
+                    target = checked(user, relative)
+                    if target.is_file() and digest(target.read_bytes().replace(b'\r\n', b'\n')) == sha:
+                        changes[relative] = None  # Exact disabled stock profiles only; backed up first.
             ready['layout_version'] = layout_migration.VERSION
         missing = any(not checked(user, p).is_file() for p in MESSAGE_PATHS)
         if ready.get('resource_version', 1) < RESOURCE_VERSION or missing:

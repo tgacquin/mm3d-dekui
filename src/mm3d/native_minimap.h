@@ -252,7 +252,7 @@ struct Hook {
             }
         }
         const float player_scale=HudAdjustments::Scale(HudAdjustments::Minimap);
-        const float offset_x=right_edge-right-320.f*scale+map_right*scale*(1-player_scale)+HudAdjustments::X(HudAdjustments::Minimap);
+        const float offset_x=right_edge-right-320.f*scale+map_right*scale*(1-player_scale)+HudAdjustments::X(HudAdjustments::Minimap)+HudAdjustments::HorizontalPadding(HudAdjustments::Minimap);
         const float offset_y=240.f-bottom_inset-240.f*scale+map_bottom*scale*(1-player_scale)+HudAdjustments::Y(HudAdjustments::Minimap);
         scale*=player_scale;
         for (const auto& e:selected) {

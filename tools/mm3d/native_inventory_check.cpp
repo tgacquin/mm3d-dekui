@@ -160,7 +160,7 @@ void MirroredItemBackgroundChecks(){
         auto actions=m.Layout("Hud"),actual_b=m.Widget("b_action_button");
         m.Children(actions+8,{actual_b});m.words[actual_b+0x28]=geometries[0];
         const auto sp=m.Alloc(0x5000)+0x5000;const auto original=m.words;
-        H::Apply(H::FreshDefaults());
+        auto defaults=H::FreshDefaults();defaults.mirror_item_buttons=false;H::Apply(defaults);
         assert(hook.Root(m,layout,layout+8,sp)==layout+8&&m.words==original);
         assert(hook.scratch.End(m)==0&&m.words==original);
         H::mirror_item_buttons=true;

@@ -20,7 +20,8 @@ class GameFolderTests(unittest.TestCase):
             for key,value in defaults.items():
                 if key.startswith(('player_hud_', 'dungeon_map_', 'notebook_')) or key=='minimap_opacity':
                     self.assertEqual(actual[key],value,key)
-            self.assertEqual(actual['player_hud_layout_version'],1)
+            self.assertEqual(actual['player_hud_layout_version'],2)
+            self.assertTrue(actual['player_hud_mirror_item_buttons'])
             self.assertEqual(actual['player_hud_scale'],0)
             textures=root/'user/load/textures/0004000000125500'
             self.assertTrue(textures.is_dir())

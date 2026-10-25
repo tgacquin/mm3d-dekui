@@ -12,8 +12,8 @@ class LayoutMigrationTests(unittest.TestCase):
     def setUp(self):
         self.policy=migration.policy(RESOURCES)
 
-    def apply(self, obj):
-        raw,held=migration.migrate((json.dumps(obj)+'\n').encode(),self.policy)
+    def apply(self, obj, revision=0):
+        raw,held=migration.migrate((json.dumps(obj)+'\n').encode(),self.policy,revision)
         return json.loads(raw),held
 
     def test_previous_defaults_upgrade_groups_preserve_hud(self):
@@ -32,7 +32,7 @@ class LayoutMigrationTests(unittest.TestCase):
         prefixes=tuple(p for group in migration.GROUPS.values() for p in group)
         for k,v in old.items():
             shipped_fades = k == 'fullscreen_draws' and v == self.policy.get('previous_fullscreen_draws')
-            self.assertEqual(new[k],self.policy['current'][k] if shipped_fades or (k.startswith(prefixes) and k in self.policy['current']) else v,k)
+            self.assertEqual(new[k],self.policy['current'][k] if shipped_fades or ((k.startswith(prefixes) or any(k in g for g in self.policy['legacy_dungeon_widgets'].values())) and k in self.policy['current']) else v,k)
         again,held=self.apply(new);self.assertEqual(again,new)
 
     def test_custom_group_is_not_partially_repositioned(self):
@@ -72,7 +72,7 @@ class LayoutMigrationTests(unittest.TestCase):
         prefixes=tuple(p for group in migration.GROUPS.values() for p in group)
         for k,v in self.policy['previous'].items():
             if self.policy['current'].get(k)!=v:
-                self.assertTrue(k.startswith(prefixes) or k in self.policy['preserve_existing'] or (k == 'fullscreen_draws' and v == self.policy.get('previous_fullscreen_draws')),k)
+                self.assertTrue(k.startswith(prefixes) or any(k in g for g in self.policy['legacy_dungeon_widgets'].values()) or k in self.policy['preserve_existing'] or (k == 'fullscreen_draws' and v == self.policy.get('previous_fullscreen_draws')),k)
 
     def test_shipped_fades_upgrade_but_custom_fades_remain(self):
         previous = self.policy['previous_fullscreen_draws']
@@ -160,7 +160,7 @@ class LayoutMigrationTests(unittest.TestCase):
             new, _ = self.apply(old)
             self.assertEqual(new, old)
 
-    def test_arranged_defaults_never_replace_existing_hud_or_map(self):
+    def test_arranged_defaults_preserve_hud_and_custom_map_widgets(self):
         keys = tuple(self.policy['existing_install_defaults'])
         for customized in (False, True):
             old = dict(self.policy['previous'])
@@ -175,9 +175,13 @@ class LayoutMigrationTests(unittest.TestCase):
             new, _ = self.apply(old)
             for key in keys:
                 self.assertEqual(new[key], old[key], key)
+            expected=dict(old)
+            for group in self.policy['legacy_dungeon_widgets'].values():
+                if all(k in old and migration.close(old[k],v) for k,v in group.items()):
+                    expected.update({k:self.policy['current'][k] for k in group})
             for key in old:
                 if key.startswith(('dungeon_map_', 'notebook_')):
-                    self.assertEqual(new[key], old[key], key)
+                    self.assertEqual(new[key], expected[key], key)
             for key in self.policy['fresh_install_only']:
                 if key not in old:
                     self.assertNotIn(key, new)  # Keep legacy Notebook inheritance.
@@ -199,6 +203,65 @@ class LayoutMigrationTests(unittest.TestCase):
         self.assertTrue(new['hd_pictograph_photos'])
         new, _ = self.apply(dict(self.policy['previous'], hd_pictograph_photos=False))
         self.assertFalse(new['hd_pictograph_photos'])
+
+    def test_previous_arranged_hud_keeps_values_and_reference_version(self):
+        previous = dict(self.policy['current'], player_hud_layout_version=1,
+                        player_hud_hearts_scale=4, player_hud_heart_spacing=-17,
+                        player_hud_magic_height=-4, player_hud_magic_y=5,
+                        player_hud_rupees_scale=2, player_hud_mirror_item_buttons=False)
+        for revision in (0, 1, 2, 3):
+            for customized in (False, True):
+                old = dict(previous)
+                if customized:
+                    old.update(player_hud_hearts_scale=7, player_hud_magic_y=19,
+                               player_hud_left_padding=-17, player_hud_right_padding=23,
+                               player_hud_mirror_item_buttons=True)
+                new, _ = self.apply(old, revision)
+                self.assertEqual(new, old)
+
+    def test_revision_three_upgrades_only_stock_dungeon_layout(self):
+        old=dict(self.policy['current'], gear_6_x=0, gear_6_y=0, gear_6_scale=1,
+                 magic_bar_height=self.policy['previous']['magic_bar_height'],
+                 minimap_opacity=.31, player_hud_heart_spacing=21, player_hud_hearts_scale=7,
+                 notebook_buttons_scale=1.2, notebook_map_prompt_y=-31,
+                 dungeon_map_prompts_scale=1.7, dungeon_map_prompts_spacing=29)
+        old.update(self.policy['legacy_arrow_defaults'])
+        for group in self.policy['legacy_dungeon_widgets'].values():old.update(group)
+        new,held=self.apply(old,3)
+        self.assertEqual(held,[])
+        expected=dict(old)
+        for key in self.policy['legacy_arrow_defaults']:expected[key]=self.policy['current'][key]
+        for group in self.policy['legacy_dungeon_widgets'].values():
+            for key in group:expected[key]=self.policy['current'][key]
+        self.assertEqual(new,expected)
+        again,_=self.apply(new,3);self.assertEqual(again,new)
+
+    def test_custom_arrow_group_remains_whole_and_missing_keys_stay_missing(self):
+        legacy=self.policy['legacy_arrow_defaults']
+        for revision in (0,3):
+            for key in legacy:
+                old=dict(self.policy['current']);old.update(legacy);old[key]+=0.000001
+                expected=dict(old);new,held=self.apply(old,revision)
+                self.assertEqual(new,expected)
+                self.assertIn('dungeon_map_arrows',held)
+            for overrides in ({'dungeon_map_arrow_up_y':17}, {'dungeon_map_arrows_scale':.77}):
+                old=dict(self.policy['current'])
+                for key in legacy:old.pop(key)
+                old.update(overrides);new,held=self.apply(old,revision)
+                self.assertEqual(new,old)
+                self.assertIn('dungeon_map_arrows',held)
+        new,_=self.apply({'version':1},3)
+        self.assertEqual(new,dict({'version':1},**{k:self.policy['current'][k] for k in legacy}))
+
+    def test_custom_or_incomplete_dungeon_widget_never_partially_moves(self):
+        for name,group in self.policy['legacy_dungeon_widgets'].items():
+            for revision in (0,3):
+                for key in group:
+                    old=dict(self.policy['current']);old.update(group);old[key]+=1
+                    new,held=self.apply(old,revision)
+                    self.assertEqual(new,old);self.assertIn(name,held)
+                    old.pop(key);new,held=self.apply(old,revision)
+                    self.assertEqual(new,old);self.assertIn(name,held)
 
     def test_retired_profiles_are_explicitly_allowlisted(self):
         from upgrade_game_resources import RETIRED

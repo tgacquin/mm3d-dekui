@@ -21,7 +21,7 @@ inline QString ResetMenuLayouts(const QString& config, const QString& user) {
     const auto baseline=read(user+"setup/layout-baseline.json");
     const auto defaults=baseline["defaults"].toObject();
     const auto layout_version=baseline["version"].toInt();
-    if(current["version"].toInt()!=1 || layout_version<1 || layout_version>3 || defaults.isEmpty())
+    if(current["version"].toInt()!=1 || layout_version<1 || layout_version>4 || defaults.isEmpty())
         return "Menu layout reset failed: settings or release defaults are unavailable.";
     for(auto it=defaults.begin();it!=defaults.end();++it) {
         const auto key=it.key();

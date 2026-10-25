@@ -67,7 +67,7 @@ inline QString Validate() {
     if(setup[QStringLiteral("version")].toInt()!=1 || setup[QStringLiteral("rom_sha256")].toString()!=QString::fromLatin1(Hash))
         return QStringLiteral("Game setup is incompatible. Keep your saves and prepare a new application folder.");
     if(setup[QStringLiteral("resource_version")].toInt()!=2 ||
-       setup[QStringLiteral("layout_version")].toInt()!=3 ||
+       setup[QStringLiteral("layout_version")].toInt()!=4 ||
        QFileInfo::exists(User()+QStringLiteral("setup/resource-upgrade-pending")))
         return QStringLiteral("Game resource upgrade is incomplete. Close Dekui and launch again to retry. Preserve your user folder and its upgrade backups.");
     return {};

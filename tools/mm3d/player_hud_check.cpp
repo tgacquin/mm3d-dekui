@@ -15,7 +15,7 @@ void MenuIsolationChecks() {
         m.words[geometry+0x20]=std::bit_cast<U32>(60.f);m.words[geometry+0x24]=std::bit_cast<U32>(20.f);
         const auto original=m.words;
         auto options=H::FreshDefaults();options.overall=4;options.magic_width=2;
-        options.opacity=.3f;options.top=7;options.x[H::Hearts]=31;H::Apply(options);
+        options.opacity=.3f;options.top=7;options.left=23;options.right=-17;options.x[H::Hearts]=31;H::Apply(options);
         hook.Begin(m,layout);assert(m.words==original);hook.End(m);assert(m.words==original);
     }
     H::Apply({});
@@ -88,7 +88,7 @@ void TimerAnchorChecks() {
     const auto f=[&](U32 n,U32 off){return std::bit_cast<float>(m.words[n+off]);};
     for(int global:{-10,0,10})for(int local:{-10,0,10})for(bool hidden:{false,true}) {
         H::Options o;o.overall=global;o.elements[H::Timer]=local;o.elements[H::Clock]=local;
-        o.top=3;o.bottom=7;o.x[H::Timer]=11;o.y[H::Timer]=5;
+        o.top=3;o.bottom=7;o.left=19;o.right=-13;o.x[H::Timer]=11;o.y[H::Timer]=5;
         o.x[H::Clock]=-4;o.y[H::Clock]=2;H::Apply(o);
         m.words[countdown+0x134]=std::bit_cast<U32>(hidden?0.f:.6f);auto before=m.words;
         hook.Begin(m,hud);const float scale=H::Scale(H::Timer);
@@ -194,8 +194,23 @@ void PlayerHudChecks() {
         // vertex, anchor, gap, count and unrelated widget exactly.
         o.base_scale=step;o.overall=0;H::Apply(o);hook.Begin(m,hud);
         assert(m.words==adjusted);hook.End(m);assert(m.words==baseline);
+        // Signed padding stays in screen pixels at every scale, moves both
+        // counter rows together, and is fully restored after each draw.
+        for(int padding:{-100,-17,0,23,100}) {
+            o.left=padding;o.right=padding;o.top=padding/3;o.bottom=padding/4;H::Apply(o);hook.Begin(m,hud);
+            for(auto n:{hearts,magic,rupees,keys,rupee_digit,key_digit,dpad_quad}) {
+                assert(std::abs(f(n,0xec)-std::bit_cast<float>(adjusted.at(n+0xec))-padding)<.0001f);
+                const bool bottom=n==rupees||n==keys||n==rupee_digit||n==key_digit;
+                assert(std::abs(f(n,0xfc)-std::bit_cast<float>(adjusted.at(n+0xfc))-(bottom?9-o.bottom:o.top-7))<.0001f);
+                assert(m.words[n+0xe0]==adjusted.at(n+0xe0));
+            }
+            for(auto n:{buttons,circle,hidden})
+                assert(std::abs(f(n,0xec)-std::bit_cast<float>(adjusted.at(n+0xec))+padding)<.0001f);
+            assert(f(other,0xec)==45&&f(other,0xfc)==80);
+            hook.End(m);assert(m.words==baseline);
+        }
         o.overall=3;o.x[H::Hearts]=9;H::ResetPlayer(o);
-        assert(o.base_scale==2&&o.overall==0&&o.x[H::Hearts]==-3&&o.layout_version==1);
+        assert(o.base_scale==2&&o.overall==0&&o.x[H::Hearts]==-3&&o.layout_version==2&&o.left==0&&o.right==0);
     }
     // The UI version changes readouts only, never renderer geometry.
     auto fresh=H::FreshDefaults(),legacy=fresh;legacy.layout_version=0;
@@ -206,6 +221,13 @@ void PlayerHudChecks() {
     assert(ui.heart_spacing==fresh.heart_spacing&&ui.magic_height_steps==fresh.magic_height_steps);
     assert(fresh.magic_width/ui.magic_width==1.f&&old_ui.magic_width==1.f);
     assert(old_ui.elements==H::Options{}.elements&&H::UiDefaults(fresh,false).x==old_ui.x);
+    auto previous=H::VersionOneDefaults();
+    const auto previous_ui=H::UiDefaults(previous,true);
+    assert(previous_ui.elements==previous.elements&&previous_ui.y==previous.y);
+    assert(previous_ui.heart_spacing==-17&&previous_ui.magic_height_steps==-4);
+    assert(fresh.elements[H::Hearts]==5&&fresh.heart_spacing==-25&&fresh.magic_height_steps==-1);
+    assert(fresh.y[H::Magic]==4&&fresh.elements[H::Rupees]==1&&fresh.mirror_item_buttons);
+    assert(!previous.mirror_item_buttons&&H::DefaultMinimapOpacity(previous)==.75f);
     assert(m.words==baseline);
     H::Options positioned;positioned.overall=4;positioned.top=7;positioned.bottom=9;
     H::Apply(positioned);hook.Begin(m,hud);auto scaled=m.words;hook.End(m);
@@ -341,7 +363,7 @@ void PlayerMinimapChecks() {
     for(float inset:{0.f,65.f})for(int steps:{-10,0,10})for(int local:{-10,0,10})
     for(float angle:{0.f,.785398163f,1.570796327f})for(float origin:{0.f,-.5f})for(float opacity:{0.f,.5f,1.f})for(float map_opacity:{0.f,.1f,.85f}) {
         Memory m;N::Hook hook;H::Options o;o.opacity=opacity;o.overall=steps;o.elements[H::Minimap]=local;
-        o.bottom=13;o.x[H::Minimap]=7;o.y[H::Minimap]=-3;H::Apply(o);
+        o.bottom=steps;o.right=steps*10;o.left=23;o.x[H::Minimap]=7;o.y[H::Minimap]=-3;H::Apply(o);
         for(unsigned q=0;q<8;++q){m.words[N::Count(q)]=0;for(unsigned i=0;i<2;++i){m.words[N::Pointer(q,i)]=0;m.words[N::Priority(q,i)]=0;}}
         auto map=m.Alloc(0x3a8),pos=m.Alloc(12),size=m.Alloc(12),rotation=m.Alloc(48);
         auto marker=m.Alloc(0x3a8),marker_pos=m.Alloc(12),marker_size=m.Alloc(12);
@@ -377,8 +399,8 @@ void PlayerMinimapChecks() {
             actual_right=std::max(actual_right,f(pos)+c*x*f(size)-sn*y*f(size+4));
             actual_bottom=std::max(actual_bottom,f(pos+4)+sn*x*f(size)+c*y*f(size+4));
         }
-        assert(std::abs(actual_right-(399+(right-320)*.36f))<.0001f);
-        assert(std::abs(actual_bottom-(216+(bottom-240)*.36f))<.0001f);
+        assert(std::abs(actual_right-(399+(right-320)*.36f-o.right))<.0001f);
+        assert(std::abs(actual_bottom-(229-o.bottom+(bottom-240)*.36f))<.0001f);
         const float factor=H::Scale(H::Minimap);
         assert(std::abs(f(size)-40*.36f*factor)<.0001f);
         assert(std::abs(f(marker_pos)-f(pos)-(500-(280-inset))*.36f*factor)<.0001f);
