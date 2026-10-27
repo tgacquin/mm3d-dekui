@@ -62,7 +62,7 @@ A custom fork of Azahar is used as the backing engine.
 2. Put Majora's Mask 3D (USA 1.1) in the same folder as the application
 3. Run the app. First launch silently checks the game and prepares its files automatically.
 
-**Press F1 to open settings and adjust camera zoom, HUD layout, controls, audio, graphics, and difficulty.**
+**Press F1 to open settings and adjust camera zoom, HUD layout, controls, audio, graphics, restorations and difficulty.**
 
 
 ## Updating
@@ -92,29 +92,6 @@ Dragging it into the terminal will give the full path of it. It should work from
 
 Please use another legally acquired file of the same USA Version 1.1 .cci or .3ds. Some don't work for some reason.
 
-#### The game freezes right after starting up
-
-Try the following:
-
-1. Open the user folder beside Dekui.exe
-2. Open config/mm3d-local/presentation.json in a text editor.
-3. Find "interpolation_60fps": true and change it to:
-
-```json
-"interpolation_60fps": false
-```
-
-4. Save file and boot up game
-
-The game will run at 30fps, however. I am currently investigating what causes freezing for some users with interpolation on.
-
-#### The I and II buttons seem to have text behind them
-
-There's actually no way around this as MM3D has two bubble textures, and both have A and B baked into them.
-That means for the new I and II buttons, I and II have to be overlaid onto the B button. If this bothers you,
-please use a texture pack that removes the letter B from the B button texture. This is the one Project Restoration
-uses: https://zora.re/dl/tex1_512x256_E2CEBCB19DA2608F_13.png
-
 ## Reporting issues
 
 Found a bug or crash? Please report it at:
@@ -126,7 +103,5 @@ Include your version, operating system, and steps to reproduce the issue.
 
 AI was used extensively for the purpose of identifying each element the game renders and allowing repositioning, scaling, and transforming of them from the bottom screen to the top screen. This project otherwise would not have been feasible for me to do as the game is not yet decompiled and changes have to be done at the assembly level. However, all repositioning/scaling of the elements for a clean interface was done by me and required a lot of forethought in terms of
 how the layouts should look. For those unwilling to try this project because of this, please play the recompilation which is also an excellent way to enjoy this game.
-
-This project is currently in beta and likely has many bugs I've yet to see so make sure you save frequently!
 
 Thank you to leoetlino for his work on Project Restoration!
