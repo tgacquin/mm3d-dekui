@@ -6,6 +6,7 @@
 #include <utility>
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/translation.h"
+#include "mm3d/titles.h"
 #ifdef ANDROID
 #include "common/android_utils.h"
 #endif
@@ -329,7 +330,7 @@ System::ResultStatus System::Load(Frontend::EmuWindow& emu_window, const std::st
 #ifdef ENABLE_MM3D_PRESENTATION
     // Pin a validated translation for this session. UI changes apply on restart.
     MM3D::Translation::active.store(nullptr);
-    if (program_id == 0x0004000000125500ULL) {
+    if (MM3D::Titles::IsSupported(program_id)) {
         auto directory = FileUtil::GetUserPath(FileUtil::UserPath::ConfigDir) + "mm3d-local/";
 #ifdef ANDROID
         directory = AndroidUtils::TranslateFilePath(directory);

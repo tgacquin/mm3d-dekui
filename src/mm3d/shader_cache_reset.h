@@ -6,10 +6,10 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QStringList>
+#include "mm3d/titles.h"
 
 namespace MM3D::ShaderCacheReset {
-inline constexpr quint64 TitleId = 0x0004000000125500ULL;
-inline constexpr auto Title = "0004000000125500";
+inline constexpr quint64 TitleId = MM3D::Titles::Usa; // default title for tests
 inline const QString Marker = QStringLiteral("shader-cache-reset.pending");
 inline std::atomic<bool> completed{false};
 
@@ -55,14 +55,14 @@ struct Result { bool reset = false; QString error; };
 // Call only after the previous emulation thread/renderer has shut down, and
 // before loading the new renderer. Shutdown can otherwise write the cache back.
 inline Result ApplyPending(const QString& config, const QString& shaders, quint64 title_id, bool renderer_active) {
-    if (renderer_active || title_id != TitleId || !Pending(config)) return {};
+    if (renderer_active || !MM3D::Titles::IsSupported(title_id) || !Pending(config)) return {};
     if (const auto error = CheckPath(config, Marker); !error.isEmpty()) return {false, error};
     QFile marker(MarkerPath(config));
     if (!marker.open(QIODevice::ReadOnly) || marker.read(64) != "pending-v1\n")
         return {false, QStringLiteral("Could not read a valid shader cache reset request.")};
     marker.close();
 
-    const auto title = QString::fromLatin1(Title);
+    const auto title = QString::fromStdString(MM3D::Titles::Hex(title_id));
     QStringList files{ QStringLiteral("opengl/transferable/") + title + QStringLiteral(".bin"),
                        QStringLiteral("opengl/precompiled/separable/") + title + QStringLiteral(".bin"),
                        QStringLiteral("opengl/precompiled/conventional/") + title + QStringLiteral(".bin") };

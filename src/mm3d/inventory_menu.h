@@ -6,6 +6,7 @@
 #include <QSaveFile>
 #include "common/file_util.h"
 #include "mm3d/qt_user_path.h"
+#include "mm3d/titles.h"
 #include "mm3d/native_inventory.h"
 #include "mm3d/pause_capture.h"
 #include "mm3d/item_preview.h"
@@ -75,7 +76,7 @@ inline void Apply(const Options& o) {
 // Undo only the four widgets edited by the old experiment; preserve other mods.
 inline QString RestoreLegacy() {
     const QString path=QtUserPath(FileUtil::UserPath::LoadDir)+
-        "mods/0004000000125500/romfs/layout/Joker.Main.Play.SubMenu.gar";
+        "mods/"+QString::fromStdString(MM3D::Titles::SelectedHex())+"/romfs/layout/Joker.Main.Play.SubMenu.gar";
     if(!QFileInfo::exists(path+".mm3d-inventory-source") || !QFileInfo::exists(path)) return {};
     QFile base(path+".mm3d-inventory-source"),live(path);
     if(!base.open(QIODevice::ReadOnly)||!live.open(QIODevice::ReadOnly)) return "Cannot restore the previous inventory experiment.";

@@ -8,9 +8,15 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QtEndian>
+#include "mm3d/titles.h"
 
 namespace MM3D::GameFolder {
-inline constexpr auto Hash = "9c756279e3ec00bb9009f92ca2e7b9ec8b1fcdfcd9de057658b209caa24323da";
+// Verified decrypted main partitions. Europe Rev 1 shares USA Rev 1's code.bin.
+struct SupportedRom { quint64 title; quint64 size; const char* sha256; };
+inline constexpr SupportedRom SupportedRoms[] = {
+    {Titles::Usa, 654643200, "9c756279e3ec00bb9009f92ca2e7b9ec8b1fcdfcd9de057658b209caa24323da"},
+    {Titles::Europe, 668647424, "a26108ef34b49df421cca20eda1b4f38f596ebef9ac6b9c70a64245be055a722"},
+};
 inline QString Root() {
     // AppImage mounts its executable read-only; use the folder holding the image.
     const auto appimage = qEnvironmentVariable("APPIMAGE");
@@ -41,7 +47,7 @@ inline QString FindRom(const QString& root) {
 }
 inline QString Rom() { return FindRom(Root()); }
 inline QString MissingGameMessage() {
-    return QStringLiteral("Place exactly one decrypted USA v1.1 game-card dump (.cci or .3ds) beside the application, then launch Dekui again. Use a game card with v1.1 preinstalled.");
+    return QStringLiteral("Place exactly one decrypted USA or Europe v1.1 game-card dump (.cci or .3ds) beside the application, then launch Dekui again. Use a game card with v1.1 preinstalled.");
 }
 inline QString User() { return Root() + QStringLiteral("/user/"); }
 inline QString Validate() {
@@ -52,7 +58,9 @@ inline QString Validate() {
     if (header.size()!=512 || header.mid(0x100,4)!="NCSD") return QStringLiteral("Unsupported game container.");
     const auto word = [&](int at) { return qFromLittleEndian<quint32>(header.constData()+at); };
     const quint64 base=quint64(word(0x120))*512, size=quint64(word(0x124))*512;
-    if(base<512 || size!=654643200 || base+size>quint64(file.size()) || !file.seek(base))
+    const SupportedRom* rom=nullptr;
+    for(const auto& candidate:SupportedRoms) if(candidate.size==size) rom=&candidate;
+    if(!rom || base<512 || base+size>quint64(file.size()) || !file.seek(base))
         return QStringLiteral("Unsupported or incomplete game dump.");
     QCryptographicHash hash(QCryptographicHash::Sha256);
     for (quint64 remaining=size; remaining;) {
@@ -60,16 +68,17 @@ inline QString Validate() {
         if(bytes.isEmpty()) return QStringLiteral("Could not read the game.");
         hash.addData(bytes); remaining-=bytes.size();
     }
-    if(hash.result().toHex()!=Hash) return QStringLiteral("Unsupported game revision/content. The supported decrypted USA Rev 1 dump is required.");
+    if(hash.result().toHex()!=rom->sha256) return QStringLiteral("Unsupported game revision/content. A supported decrypted USA or Europe Rev 1 dump is required.");
     QFile ready(User()+QStringLiteral("setup/ready.json"));
     if(!ready.open(QIODevice::ReadOnly)) return QStringLiteral("Game setup is incomplete. Preserve your user folder and saves, then try a fresh application folder.");
     const auto setup=QJsonDocument::fromJson(ready.readAll()).object();
-    if(setup[QStringLiteral("version")].toInt()!=1 || setup[QStringLiteral("rom_sha256")].toString()!=QString::fromLatin1(Hash))
+    if(setup[QStringLiteral("version")].toInt()!=1 || setup[QStringLiteral("rom_sha256")].toString()!=QString::fromLatin1(rom->sha256))
         return QStringLiteral("Game setup is incompatible. Keep your saves and prepare a new application folder.");
     if(setup[QStringLiteral("resource_version")].toInt()!=2 ||
        setup[QStringLiteral("layout_version")].toInt()!=4 ||
        QFileInfo::exists(User()+QStringLiteral("setup/resource-upgrade-pending")))
         return QStringLiteral("Game resource upgrade is incomplete. Close Dekui and launch again to retry. Preserve your user folder and its upgrade backups.");
+    Titles::Select(rom->title); // mods/ and textures/ folders follow the installed region.
     return {};
 }
 }

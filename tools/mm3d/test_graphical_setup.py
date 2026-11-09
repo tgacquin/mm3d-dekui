@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 from graphical_setup import prepare
 import graphical_setup
-from setup_game_folder import setup
+from setup_game_folder import setup, supported_roms
 
 
 class GraphicalSetupTests(unittest.TestCase):
@@ -48,7 +48,7 @@ class GraphicalSetupTests(unittest.TestCase):
     def test_publish_failure_removes_only_new_game(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);rom=root/'original.cci';rom.write_bytes(b'original')
-            with patch('setup_game_folder.validate'), patch('setup_game_folder.extract',side_effect=lambda rom,out:out.mkdir(parents=True)), patch('setup_game_folder.build'), patch.object(Path,'rename',side_effect=OSError('disk failure')):
+            with patch('setup_game_folder.validate',return_value=supported_roms()[0]), patch('setup_game_folder.extract',side_effect=lambda rom,out,entry=None:out.mkdir(parents=True)), patch('setup_game_folder.build'), patch.object(Path,'rename',side_effect=OSError('disk failure')):
                 with self.assertRaisesRegex(OSError,'disk failure'):
                     setup(root,root,rom)
             self.assertEqual(rom.read_bytes(),b'original')
@@ -59,7 +59,7 @@ class GraphicalSetupTests(unittest.TestCase):
     def test_in_place_setup_never_copies_or_moves_game(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);rom=root/'My Game.3ds';rom.write_bytes(b'keep')
-            with patch('setup_game_folder.validate'),patch('setup_game_folder.extract',side_effect=lambda rom,out:out.mkdir(parents=True)),patch('setup_game_folder.build'):
+            with patch('setup_game_folder.validate',return_value=supported_roms()[0]),patch('setup_game_folder.extract',side_effect=lambda rom,out,entry=None:out.mkdir(parents=True)),patch('setup_game_folder.build'):
                 setup(root,root,rom,copy_game=False)
             self.assertEqual(rom.read_bytes(),b'keep')
             self.assertFalse((root/'game').exists())
