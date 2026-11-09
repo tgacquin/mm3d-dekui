@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "mm3d/notebook.h"
 #include "mm3d/notebook_paths.h"
+#include "mm3d/titles.h"
 
 #include <cmath>
 #include <cstring>
@@ -29,7 +30,6 @@ constexpr std::size_t kX = 0x99E8;
 constexpr std::size_t kY = 0x99EC;
 constexpr std::size_t kScaleX = 0x99F4;
 constexpr std::size_t kScaleY = 0x99F8;
-constexpr std::uint64_t kMajoraMask3DTitleId = 0x0004000000125500ULL;
 
 QString OriginalLayout(const char* name) {
 #ifdef ENABLE_MM3D_GAME_FOLDER
@@ -63,7 +63,7 @@ float Load(const std::string& bytes, std::size_t offset) {
 
 std::string EventsOverridePath() {
     return QtUserPath(FileUtil::UserPath::LoadDir).toStdString() +
-        fmt::format("mods/{:016X}/romfs/layout/Joker.Main.Play.SubMenu.gar", kMajoraMask3DTitleId);
+        fmt::format("mods/{:016X}/romfs/layout/Joker.Main.Play.SubMenu.gar", MM3D::Titles::Selected().load());
 }
 
 std::string DefaultSourceArchive() {
@@ -270,7 +270,7 @@ constexpr std::size_t kTelop=0xCCE8, kTelopX=kTelop+0x354;
 constexpr unsigned kTelopFields[]{0x138,0x13C,0x144,0x148,0x290,0x354,0x36C,0x370,0x3AC,0x3B8,0x3BC,0x3C0,0x3C4,0x3C8,0x3CC};
 QString TelopOutput() {
     return QtUserPath(FileUtil::UserPath::LoadDir) +
-        QString::fromStdString(fmt::format("mods/{:016X}/romfs/layout/Joker.Main.gar",kMajoraMask3DTitleId));
+        QString::fromStdString(fmt::format("mods/{:016X}/romfs/layout/Joker.Main.gar",MM3D::Titles::Selected().load()));
 }
 bool OwnTelop(const QString& output) {
     const auto backup=output+".mm3d-telop-source";

@@ -36,6 +36,7 @@
 #include "mm3d/pause_capture.h"
 #include "mm3d/photo_capture.h"
 #include "mm3d/visibility_depth.h"
+#include "mm3d/titles.h"
 #include "mm3d/native_notebook.h"
 #include "mm3d/native_file_select.h"
 #include "mm3d/file_select_interpolation.h"
@@ -246,105 +247,105 @@ public:
         if(instruction&&MM3D::ScreenShrink::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::ScreenShrink::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::ScreenShrink::CodeMatches(code))
                 return MM3D::ScreenShrink::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::ClassicSaving::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::ClassicSaving::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::ClassicSaving::CodeMatches(code))
                 return MM3D::ClassicSaving::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::StickControls::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::StickControls::CodeMatches(code,vaddr))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::StickControls::CodeMatches(code,vaddr))
                 return MM3D::StickControls::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MinimapShortcut::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::MinimapShortcut::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::MinimapShortcut::CodeMatches(code))
                 return MM3D::MinimapShortcut::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::BottleHealing::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::BottleHealing::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::BottleHealing::CodeMatches(code))
                 return MM3D::BottleHealing::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::DeathPenalties::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::DeathPenalties::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::DeathPenalties::CodeMatches(code))
                 return MM3D::DeathPenalties::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::Difficulty::SpawnInstruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::Difficulty::SpawnCodeMatches(code,vaddr))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::Difficulty::SpawnCodeMatches(code,vaddr))
                 return MM3D::Difficulty::SpawnInstruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::PropDrawDistance::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::PropDrawDistance::CodeMatches(code,vaddr))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::PropDrawDistance::CodeMatches(code,vaddr))
                 return MM3D::PropDrawDistance::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::VegetationDrawDistance::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::VegetationDrawDistance::CodeMatches(code,vaddr))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::VegetationDrawDistance::CodeMatches(code,vaddr))
                 return MM3D::VegetationDrawDistance::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::ActorDrawDistance::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::ActorDrawDistance::CodeMatches(code,vaddr))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::ActorDrawDistance::CodeMatches(code,vaddr))
                 return MM3D::ActorDrawDistance::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::Difficulty::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::Difficulty::CodeMatches(code,vaddr))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::Difficulty::CodeMatches(code,vaddr))
                 return MM3D::Difficulty::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::FastTime::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::FastTime::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::FastTime::CodeMatches(code))
                 return MM3D::FastTime::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::NativeStartup::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::NativeStartup::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::NativeStartup::CodeMatches(code))
                 return MM3D::NativeStartup::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::ScheduleRows::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::ScheduleRows::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::ScheduleRows::CodeMatches(code))
                 return MM3D::ScheduleRows::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::NotebookRows::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::NotebookRows::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::NotebookRows::CodeMatches(code))
                 return MM3D::NotebookRows::Instruction(vaddr,*instruction);
         }
         if(instruction && MM3D::NativeNotebook::MapInstruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory { Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) {return memory.Read32OrNullopt(at);} } code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::NativeNotebook::MapCodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::NativeNotebook::MapCodeMatches(code))
                 return MM3D::NativeNotebook::MapInstruction(vaddr,*instruction);
         }
         if(instruction && MM3D::NativeNotebook::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory { Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) {return memory.Read32OrNullopt(at);} } code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::NativeNotebook::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::NativeNotebook::CodeMatches(code))
                 return MM3D::NativeNotebook::Instruction(vaddr,*instruction);
         }
         if(instruction && MM3D::ItemPreview::Instruction(vaddr,*instruction)!=*instruction) {
@@ -353,127 +354,127 @@ public:
                 Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) { return memory.Read32OrNullopt(at); }
             } code{memory};
-            if(process && process->codeset && process->codeset->program_id==0x0004000000125500ULL &&
+            if(process && process->codeset && MM3D::Titles::IsSupported(process->codeset->program_id) &&
                MM3D::ItemPreview::CodeMatches(code))
                 return MM3D::ItemPreview::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::HudButtons::VisibilityInstruction(vaddr,*instruction)!=*instruction){
             struct ReadMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::HudButtons::VisibilityCodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::HudButtons::VisibilityCodeMatches(code))
                 return MM3D::HudButtons::VisibilityInstruction(vaddr,*instruction);
         }
         if(instruction&&vaddr==MM3D::SongList::NavPC&&*instruction==MM3D::SongList::NavWord) {
             struct ReadMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::SongList::CodeMatches(code))return 0xef000000|MM3D::SongList::NavSVC;
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::SongList::CodeMatches(code))return 0xef000000|MM3D::SongList::NavSVC;
         }
         if(instruction&&MM3D::DungeonMap::Instruction(vaddr,*instruction)!=*instruction) {
             struct ReadMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::DungeonMap::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::DungeonMap::CodeMatches(code))
                 return MM3D::DungeonMap::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::OptionsMenu::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::OptionsMenu::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::OptionsMenu::CodeMatches(code))
                 return MM3D::OptionsMenu::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MenuShortcuts::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::MenuShortcuts::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::MenuShortcuts::CodeMatches(code))
                 return MM3D::MenuShortcuts::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MenuClose::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::MenuClose::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::MenuClose::CodeMatches(code))
                 return MM3D::MenuClose::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::BomberApproach::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::BomberApproach::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::BomberApproach::CodeMatches(code))
                 return MM3D::BomberApproach::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::OwlIntro::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::OwlIntro::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::OwlIntro::CodeMatches(code))
                 return MM3D::OwlIntro::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::OwlSword::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::OwlSword::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::OwlSword::CodeMatches(code))
                 return MM3D::OwlSword::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::TatlReminders::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::TatlReminders::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::TatlReminders::CodeMatches(code))
                 return MM3D::TatlReminders::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::Music::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::Music::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::Music::CodeMatches(code))
                 return MM3D::Music::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MenuSound::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::MenuSound::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::MenuSound::CodeMatches(code))
                 return MM3D::MenuSound::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::ClassicDoubleTime::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::ClassicDoubleTime::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::ClassicDoubleTime::CodeMatches(code))
                 return MM3D::ClassicDoubleTime::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::Prices::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::Prices::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::Prices::CodeMatches(code))
                 return MM3D::Prices::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::SingleScreenText::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::SingleScreenText::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::SingleScreenText::CodeMatches(code))
                 return MM3D::SingleScreenText::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MenuBackdrop::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::MenuBackdrop::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::MenuBackdrop::CodeMatches(code))
                 return MM3D::MenuBackdrop::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MenuMemory::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::MenuMemory::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::MenuMemory::CodeMatches(code))
                 return MM3D::MenuMemory::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::MenuPageSwitch::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::MenuPageSwitch::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::MenuPageSwitch::CodeMatches(code))
                 return MM3D::MenuPageSwitch::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::InventoryNavigation::Instruction(vaddr,*instruction)!=*instruction) {
             const auto process=parent.system.Kernel().GetCurrentProcess();
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::InventoryNavigation::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::InventoryNavigation::CodeMatches(code))
                 return MM3D::InventoryNavigation::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::NativeItemPresent::IntroInstruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::NativeItemPresent::IntroCodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::NativeItemPresent::IntroCodeMatches(code))
                 return MM3D::NativeItemPresent::IntroInstruction(vaddr,*instruction);
         }
         if (instruction && MM3D::VisibilityDepth::Instruction(vaddr, *instruction) != *instruction) {
@@ -481,20 +482,20 @@ public:
                 std::optional<u32> Read(u32 at) { return memory.Read32OrNullopt(at); }
             } code{memory};
             const auto process = parent.system.Kernel().GetCurrentProcess();
-            if (process && process->codeset && process->codeset->program_id == MM3D::VisibilityDepth::Title &&
+            if (process && process->codeset && MM3D::Titles::IsSupported(process->codeset->program_id) &&
                 MM3D::VisibilityDepth::CodeMatches(code))
                 return MM3D::VisibilityDepth::Instruction(vaddr, *instruction);
         }
         if(instruction&&MM3D::PhotoCapture::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::PhotoCapture::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::PhotoCapture::CodeMatches(code))
                 return MM3D::PhotoCapture::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::PauseCapture::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::PauseCapture::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::PauseCapture::CodeMatches(code))
                 return MM3D::PauseCapture::Instruction(vaddr,*instruction);
         }
         if(instruction && MM3D::NativeInventory::Instruction(vaddr,*instruction)!=*instruction) {
@@ -503,7 +504,7 @@ public:
                 Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) { return memory.Read32OrNullopt(at); }
             } code{memory};
-            if(process && process->codeset && process->codeset->program_id==0x0004000000125500ULL &&
+            if(process && process->codeset && MM3D::Titles::IsSupported(process->codeset->program_id) &&
                MM3D::NativeInventory::CodeMatches(code))
                 return MM3D::NativeInventory::Instruction(vaddr,*instruction);
         }
@@ -513,7 +514,7 @@ public:
                 Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) { return memory.Read32OrNullopt(at); }
             } code{memory};
-            if(process && process->codeset && process->codeset->program_id==0x0004000000125500ULL &&
+            if(process && process->codeset && MM3D::Titles::IsSupported(process->codeset->program_id) &&
                MM3D::DialogueScale::CodeMatches(code))
                 return MM3D::DialogueScale::Instruction(vaddr,*instruction);
         }
@@ -523,32 +524,32 @@ public:
                 Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) { return memory.Read32OrNullopt(at); }
             } code{memory};
-            if (process && process->codeset && process->codeset->program_id==0x0004000000125500ULL &&
+            if (process && process->codeset && MM3D::Titles::IsSupported(process->codeset->program_id) &&
                 MM3D::NativeMinimap::CodeMatches(code))
                 return MM3D::NativeMinimap::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::FormCamera::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::FormCamera::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::FormCamera::CodeMatches(code))
                 return MM3D::FormCamera::Instruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::CameraLive::ChangeModeInstruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::CameraLive::ChangeModeCodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::CameraLive::ChangeModeCodeMatches(code))
                 return MM3D::CameraLive::ChangeModeInstruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::CameraLive::DialogueCameraInstruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::CameraLive::DialogueCameraCodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::CameraLive::DialogueCameraCodeMatches(code))
                 return MM3D::CameraLive::DialogueCameraInstruction(vaddr,*instruction);
         }
         if(instruction&&MM3D::SongEffect::Instruction(vaddr,*instruction)!=*instruction) {
             struct CodeMemory {Memory::MemorySystem& memory;std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(at);}} code{memory};
             const auto process=parent.system.Kernel().GetCurrentProcess();
-            if(process&&process->codeset&&process->codeset->program_id==0x0004000000125500ULL&&MM3D::SongEffect::CodeMatches(code))
+            if(process&&process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id)&&MM3D::SongEffect::CodeMatches(code))
                 return MM3D::SongEffect::Instruction(vaddr,*instruction);
         }
         if(instruction && MM3D::CameraLive::ProjectionInstruction(vaddr,*instruction)!=*instruction) {
@@ -557,7 +558,7 @@ public:
                 Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) { return memory.Read32OrNullopt(at); }
             } code{memory};
-            if(process && process->codeset && process->codeset->program_id==0x0004000000125500ULL &&
+            if(process && process->codeset && MM3D::Titles::IsSupported(process->codeset->program_id) &&
                MM3D::CameraLive::CodeMatches(code,vaddr))
                 return MM3D::CameraLive::ProjectionInstruction(vaddr,*instruction);
         }
@@ -1702,7 +1703,7 @@ void ARM_Dynarmic::Run() {
 #ifdef ENABLE_MM3D_PRESENTATION
     if(MM3D::CameraMidpoint::enabled.load() || MM3D::CameraLive::enabled.load() || MM3D::CameraLive::capture_requested.load() || MM3D::CameraLive::desired_fov.load()>45.f || MM3D::CameraLive::needs_service.load()) {
         const auto process=system.Kernel().GetCurrentProcess();
-        if(process && process->codeset && process->codeset->program_id==0x0004000000125500ULL) {
+        if(process && process->codeset && MM3D::Titles::IsSupported(process->codeset->program_id)) {
             struct CameraMemory {
                 Memory::MemorySystem& memory;
                 std::optional<u32> Read(u32 at) { return memory.Read32OrNullopt(at); }

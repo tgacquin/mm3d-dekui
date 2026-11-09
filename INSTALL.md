@@ -2,7 +2,7 @@
 
 ## What you need
 
-A supported decrypted USA v1.1 game-card dump in `.cci` or `.3ds` format, from a card with v1.1 preinstalled. The filename can be anything. Keep exactly one game file beside the application; multiple candidates or unsupported files block startup.
+A supported decrypted USA or Europe (En,Fr,De,Es,It) v1.1 game-card dump in `.cci` or `.3ds` format, from a card with v1.1 preinstalled. The filename can be anything. Keep exactly one game file beside the application; multiple candidates or unsupported files block startup.
 
 Project Restoration and the required HUD layouts are included. Optional custom texture packs are separate.
 

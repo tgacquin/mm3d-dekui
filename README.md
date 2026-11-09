@@ -59,7 +59,7 @@ A custom fork of Azahar is used as the backing engine.
 ## Getting started
 
 1. Download the latest release corresponding to your platform
-2. Put Majora's Mask 3D (USA 1.1) in the same folder as the application
+2. Put Majora's Mask 3D (USA 1.1 or Europe 1.1) in the same folder as the application
 3. Run the app. First launch silently checks the game and prepares its files automatically.
 
 **Press F1 to open settings and adjust camera zoom, HUD layout, controls, audio, graphics, restorations and difficulty.**
@@ -90,7 +90,7 @@ Dragging it into the terminal will give the full path of it. It should work from
 
 #### I get an error saying the main partition is encrypted despite having the right version of the game
 
-Please use another legally acquired file of the same USA Version 1.1 .cci or .3ds. Some don't work for some reason.
+Please use another legally acquired file of the same USA or Europe Version 1.1 .cci or .3ds. Some don't work for some reason.
 
 ## Reporting issues
 

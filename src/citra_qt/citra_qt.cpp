@@ -6,6 +6,7 @@
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/player_settings.h"
 #include "mm3d/shader_cache_reset.h"
+#include "mm3d/titles.h"
 #include "mm3d/translation.h"
 #include "mm3d/player_settings_bridge.h"
 #include "citra_qt/configuration/configure_cheats.h"
@@ -1315,7 +1316,7 @@ void GMainWindow::ConnectWidgetEvents() {
         }
         if(open_textures.exchange(false)) {
             const auto path=QString::fromStdString(FileUtil::GetUserPath(FileUtil::UserPath::LoadDir))+
-                QStringLiteral("textures/0004000000125500");
+                QStringLiteral("textures/")+QString::fromStdString(MM3D::Titles::SelectedHex());
             if(!QDir().mkpath(path) || !QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
                 QMessageBox::warning(this,tr("Texture folder"),
                     tr("Could not open the texture folder. You can find it at:\n%1").arg(path));

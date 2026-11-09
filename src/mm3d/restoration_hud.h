@@ -7,6 +7,7 @@
 #include <QSaveFile>
 #include "common/file_util.h"
 #include "mm3d/qt_user_path.h"
+#include "mm3d/titles.h"
 
 namespace MM3D::RestorationHud {
 inline QString Install(float scale, float magic_y=0.f, float magic_height=1.f, float dpad_y=0.f) {
@@ -15,7 +16,7 @@ inline QString Install(float scale, float magic_y=0.f, float magic_height=1.f, f
     if(!std::isfinite(magic_height) || magic_height < .5f || magic_height > 2.f) return "Invalid magic bar height.";
     if(!std::isfinite(dpad_y) || dpad_y < -120.f || dpad_y > 120.f) return "Invalid D-pad Y offset.";
     const QString path=QtUserPath(FileUtil::UserPath::LoadDir)+
-        "mods/0004000000125500/romfs/layout/Joker.Main.New.gar";
+        "mods/"+QString::fromStdString(MM3D::Titles::SelectedHex())+"/romfs/layout/Joker.Main.New.gar";
     QFile source(path+".mm3d-hud-source");
     if(!source.open(QIODevice::ReadOnly)) return "HUD source backup missing; scale was not applied.";
     auto bytes=source.readAll();

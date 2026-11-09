@@ -3,5 +3,31 @@
   "remaster_version": 2,
   "main_partition_bytes": 654643200,
   "main_partition_sha256": "9c756279e3ec00bb9009f92ca2e7b9ec8b1fcdfcd9de057658b209caa24323da",
-  "description": "Verified local decrypted USA Rev 1 main partition; other dumps not yet supported."
+  "description": "Legacy flat fields describe the USA dump (read by the Android setup); 'roms' lists every supported dump.",
+  "roms": [
+    {
+      "region": "USA",
+      "program_id": "0004000000125500",
+      "remaster_version": 2,
+      "main_partition_bytes": 654643200,
+      "main_partition_sha256": "9c756279e3ec00bb9009f92ca2e7b9ec8b1fcdfcd9de057658b209caa24323da",
+      "message_dir": "us",
+      "messages": [
+        "use",
+        "usf",
+        "uss"
+      ],
+      "description": "Verified local decrypted USA Rev 1 main partition."
+    },
+    {
+      "region": "EUR",
+      "program_id": "0004000000125600",
+      "remaster_version": 2,
+      "main_partition_bytes": 668647424,
+      "main_partition_sha256": "a26108ef34b49df421cca20eda1b4f38f596ebef9ac6b9c70a64245be055a722",
+      "message_dir": null,
+      "messages": [],
+      "description": "Decrypted Europe Rev 1 main partition (En,Fr,De,Es,It). Same code.bin (CRC32 ffdf1ee8) and root layouts as USA Rev 1; classic dialogue storage is USA-only."
+    }
+  ]
 }

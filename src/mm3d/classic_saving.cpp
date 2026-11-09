@@ -48,7 +48,9 @@ void RegisterPath(const std::string& path) {
     // Exact title and slot; other games/system archives are never touched.
     const auto full=QDir::fromNativeSeparators(QString::fromStdString(path));
     for(unsigned slot=0;slot<3;++slot) {
-        if (!full.endsWith(QString("/title/00040000/00125500/data/00000001/save%1.bin").arg(slot))) continue;
+        const bool exact_title=full.endsWith(QString("/title/00040000/00125500/data/00000001/save%1.bin").arg(slot)) ||
+            full.endsWith(QString("/title/00040000/00125600/data/00000001/save%1.bin").arg(slot));
+        if (!exact_title) continue;
         std::scoped_lock lock(mutex); paths[slot]=full;marker_checked={};
         Trace("path slot="+std::to_string(slot)+" "+full.toStdString());
     }
