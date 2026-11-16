@@ -70,6 +70,8 @@ struct Settings {
     bool disable_tatl_reminders = false;
     bool single_screen_text = true;
     bool stick_click_controls = true; // First launch only; legacy settings retain their controls.
+    bool invert_camera_x = false;
+    bool invert_camera_y = false;
     bool fix_bloom = true;
     bool disable_fog = false;
     bool hd_pictograph_photos = true;

@@ -45,6 +45,7 @@
 #include "mm3d/prices.h"
 #include "mm3d/single_screen_text.h"
 #include "mm3d/stick_controls.h"
+#include "mm3d/camera_invert.h"
 #include "mm3d/notebook.h"
 #include "mm3d/notebook_inspector.h"
 #include "mm3d/profiles.h"
@@ -122,6 +123,7 @@ void ApplyPresentationSettings(const Settings& settings) {
     TatlReminders::disabled.store(settings.disable_tatl_reminders);
     SingleScreenText::enabled.store(settings.single_screen_text);
     StickControls::Configure(settings.stick_click_controls);
+    CameraInvert::Configure(settings.invert_camera_x,settings.invert_camera_y);
     BloomSampling::enabled.store(settings.fix_bloom);
     Fog::disabled.store(settings.disable_fog);
     DepthOfField::Apply(settings.depth_of_field);
@@ -977,6 +979,13 @@ void Overlay::Draw(vk::CommandBuffer command, vk::Framebuffer framebuffer,
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Controls saved":"Controls save FAILED";
             }
             help_text("ZL: Item I. ZR: Item II. Right stick click: first-person / pictograph. Left stick click: hide / show minimap. Bind stick clicks in the controller configuration.");
+            bool camera_changed=ImGui::Checkbox("Invert camera vertical axis",&state.settings.invert_camera_y);
+            camera_changed|=ImGui::Checkbox("Invert camera horizontal axis",&state.settings.invert_camera_x);
+            if(camera_changed) {
+                CameraInvert::Configure(state.settings.invert_camera_x,state.settings.invert_camera_y);
+                state.status=state.settings.Save(state.directory+"presentation.json")?"Controls saved":"Controls save FAILED";
+            }
+            help_text("Inverts the right stick (C-stick) camera. Applies immediately to every controller and keyboard binding.");
             if(ImGui::Checkbox("Hide item menu button prompts",&state.settings.player_hud.hide_menu_prompts)) {
                 HudAdjustments::hide_menu_prompts.store(state.settings.player_hud.hide_menu_prompts);
                 state.status=state.settings.Save(state.directory+"presentation.json")?"Controls saved":"Controls save FAILED";

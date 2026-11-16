@@ -618,6 +618,8 @@ int main(int argc, char** argv) {
         Require(!settings.mute_music, "music audible by default");
         Require(!settings.disable_tatl_reminders, "Tatl reminders enabled by default");
         settings.disable_tatl_reminders=true;
+        Require(!settings.invert_camera_x&&!settings.invert_camera_y,"camera inversion off by default");
+        settings.invert_camera_y=true;
         Require(!settings.sword_activate_owls,"sword activation off by default");
         settings.sword_activate_owls=true;
         Require(!settings.disable_bomber_approach,"Bomber approaches enabled by default");
@@ -688,6 +690,7 @@ int main(int argc, char** argv) {
         Require(loaded.mute_music, "music mute preference persists");
         Require(loaded.disable_low_health_beep, "low heart mute preference persists");
         Require(loaded.disable_tatl_reminders, "Tatl reminder preference persists");
+        Require(!loaded.invert_camera_x&&loaded.invert_camera_y,"camera inversion preference persists");
         Require(loaded.sword_activate_owls,"sword activation preference persists");
         Require(loaded.disable_bomber_approach,"Bomber approach preference persists");
         Require(loaded.widescreen,"widescreen persists");
