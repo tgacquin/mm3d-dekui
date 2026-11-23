@@ -78,7 +78,12 @@ If the upgrade fails or is interrupted, the game will not open; relaunch to retr
 
 ## Troubleshooting
 
+### Crash with code ___ when launching through Recomp Launcher
+
+Please try launching without Recomp Launcher. It seems to be obscuring what the source of the crash is.
+
 #### On Mac, it doesn't detect my .3ds or .cci file even though they're beside the app
+
 Try this:
 
 1. Close DekUI and open Terminal.
