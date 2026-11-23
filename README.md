@@ -78,7 +78,7 @@ If the upgrade fails or is interrupted, the game will not open; relaunch to retr
 
 ## Troubleshooting
 
-### Crash with code ___ when launching through Recomp Launcher
+#### Crash with code ___ when launching through Recomp Launcher
 
 Please try launching without Recomp Launcher. It seems to be obscuring what the source of the crash is.
 
