@@ -8,6 +8,8 @@ customizable experience so it could feel fresh for returning players.
 
 A custom fork of Azahar is used as the backing engine.
 
+**Update:** The Ocarina of Time 3D version of this mod has been released! Try it out [here](https://github.com/tgacquin/oot3d-sariaui)
+
 ## Features
 
 - Gear, Masks, Items, and Map accessible all through one screen with item models and descriptions preserved
