@@ -173,6 +173,8 @@ bool Settings::Load(const QString& path) {
     file_select.title.y=value("file_select_title_y",0.f,-512.f,512.f);
     file_select.title.scale=value("file_select_title_scale",1.f,.01f,3.f);
     disable_tatl_reminders=object.value("disable_tatl_reminders").toBool(false);
+    invert_camera_x=object.value("invert_camera_x").toBool(false);
+    invert_camera_y=object.value("invert_camera_y").toBool(false);
     disable_bomber_approach=object.value("disable_bomber_approach").toBool(false);
     sword_activate_owls=object.value("sword_activate_owls").toBool(false);
     classic_saving=object.value("classic_saving").toBool(false);
@@ -641,6 +643,8 @@ bool Settings::Save(const QString& path) const {
     object.insert("sword_activate_owls",sword_activate_owls);
     object.insert("disable_bomber_approach",disable_bomber_approach);
     object.insert("disable_tatl_reminders",disable_tatl_reminders);
+    object.insert("invert_camera_x",invert_camera_x);
+    object.insert("invert_camera_y",invert_camera_y);
     object.insert("startup_logo_x",startup.logo.x);
     object.insert("startup_logo_y",startup.logo.y);
     object.insert("startup_logo_scale",startup.logo.scale);

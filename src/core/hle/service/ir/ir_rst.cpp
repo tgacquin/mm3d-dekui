@@ -14,6 +14,7 @@
 #include "core/hle/service/hid/hid.h"
 #include "core/hle/service/ir/ir_rst.h"
 #include "core/movie.h"
+#include "mm3d/camera_invert.h"
 
 SERIALIZE_EXPORT_IMPL(Service::IR::IR_RST)
 SERVICE_CONSTRUCT_IMPL(Service::IR::IR_RST)
@@ -95,6 +96,7 @@ void IR_RST::UpdateCallback(std::uintptr_t user_data, s64 cycles_late) {
         // Get current c-stick position and update c-stick direction
         float c_stick_x_f, c_stick_y_f;
         std::tie(c_stick_x_f, c_stick_y_f) = c_stick->GetStatus();
+        MM3D::CameraInvert::Apply(c_stick_x_f, c_stick_y_f);
         constexpr int MAX_CSTICK_RADIUS = 0x9C; // Max value for a c-stick radius
         c_stick_x = static_cast<s16>(c_stick_x_f * MAX_CSTICK_RADIUS);
         c_stick_y = static_cast<s16>(c_stick_y_f * MAX_CSTICK_RADIUS);
