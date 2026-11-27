@@ -99,6 +99,13 @@ Dragging it into the terminal will give the full path of it. It should work from
 
 Please use another legally acquired file of the same USA Version 1.1 .cci or .3ds. Some don't work for some reason.
 
+#### The audio is very stuttery and distorted with CPU interpolation on
+
+CPU interpolation is expensive due to relying on hardware shaders (done to prevent stuttering and hitching).
+
+If this happens, please use GPU interpolation which is much less demanding, but expect hitches as the game builds its shader cache. These should go away after ~2 hours of playing.
+
+
 ## Reporting issues
 
 Found a bug or crash? Please report it at:
