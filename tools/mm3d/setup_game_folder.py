@@ -15,21 +15,38 @@ from upgrade_game_resources import RESOURCE_VERSION
 import layout_migration
 
 
+KEYS = ('program_id', 'remaster_version', 'main_partition_bytes', 'main_partition_sha256')
+
+
+def supported_roms():
+    return json.loads((RESOURCES / 'supported-rom.json').read_text())['roms']
+
+
+def find_supported(sha256):
+    for entry in supported_roms():
+        if entry['main_partition_sha256'] == sha256:
+            return entry
+    return None
+
+
 def validate(rom):
-    expected = json.loads((RESOURCES / 'supported-rom.json').read_text())
+    """Return the supported-ROM entry matching this dump (USA or Europe Rev 1)."""
     actual = probe(rom)
-    for key in ('program_id', 'remaster_version', 'main_partition_bytes', 'main_partition_sha256'):
-        if actual[key] != expected[key]:
-            raise ValueError('Unsupported ROM revision/content; expected the verified decrypted USA Rev 1 dump')
-    return actual
+    for entry in supported_roms():
+        if all(actual[key] == entry[key] for key in KEYS):
+            return entry
+    raise ValueError('Unsupported ROM revision/content; expected a verified decrypted USA or Europe Rev 1 dump')
 
 
-def extract(rom, output):
+def extract(rom, output, entry=None):
     # NCSD -> main NCCH -> standard IVFC level 3. Only required layout and message files are emitted.
     manifest = json.loads((RESOURCES / 'setup-fingerprints.json').read_text())
     wanted = {e['input'][6:] for e in manifest['files'] if e['input_root'] == 'original'}
     wanted.add('layout/Joker.Main.Play.gar')
-    wanted.update('message/us/'+name+'.gmsg' for name in ('use', 'usf', 'uss'))
+    if entry is None:
+        entry = validate(rom)
+    if entry['message_dir']:
+        wanted.update('message/' + entry['message_dir'] + '/' + name + '.gmsg' for name in entry['messages'])
     with rom.open('rb') as stream:
         size = rom.stat().st_size
         def read(at, count):
@@ -79,7 +96,8 @@ def setup(root, restoration, selected_rom=None, copy_game=True):
     if not copy_game and rom.resolve().parent != root.resolve() and rom.resolve() != (root/'game/mm3d.cci').resolve():
         raise ValueError('Place the game beside the application before starting setup.')
     layout_policy = layout_migration.policy(RESOURCES)
-    validate(rom)
+    entry = validate(rom)
+    title = entry['program_id']
     output = root/'user'
     if output.exists(): raise ValueError('user directory already exists; refusing to replace settings or saves')
     destination = root/'game/mm3d.cci'
@@ -89,18 +107,18 @@ def setup(root, restoration, selected_rom=None, copy_game=True):
     installed_rom = False
     try:
         original = stage/'setup/original'
-        extract(rom,original)
-        mod_root=stage/'load/mods/0004000000125500'
-        build(original,restoration,mod_root)
+        extract(rom,original,entry)
+        mod_root=stage/('load/mods/'+title)
+        build(original,restoration,mod_root,with_messages=bool(entry['message_dir']))
         write(stage, layout_migration.BASELINE, layout_migration.baseline(layout_policy))
-        (stage/'load/textures/0004000000125500').mkdir(parents=True)
+        (stage/('load/textures/'+title)).mkdir(parents=True)
         shutil.copytree(RESOURCES/'defaults',stage/'config/mm3d-local')
         write(stage, 'config/qt-config.ini', b'[Layout]\nlayout_option=1\nlayout_option\\default=false\n[Renderer]\nuse_hw_shader=false\nuse_hw_shader\\default=false\nasync_shader_compilation=false\nasync_shader_compilation\\default=false\nuse_vsync=true\nuse_vsync\\default=true\nresolution_factor=4\nresolution_factor\\default=false\ngraphics_api=2\ngraphics_api\\default=false\n')
         p=stage/'config/mm3d-local/notebook.json'; obj=json.loads(p.read_text())
         obj['source_archive']='setup/original/romfs/layout/Joker.Main.Play.SubMenu.gar'
         obj['fade_source']='setup/original/romfs/layout/Joker.gar'
         p.write_text(json.dumps(obj,indent=2)+'\n')
-        (stage/'setup/ready.json').write_text(json.dumps({'version':1,'resource_version':RESOURCE_VERSION,'layout_version':layout_migration.VERSION,'rom_sha256':json.loads((RESOURCES/'supported-rom.json').read_text())['main_partition_sha256']})+'\n')
+        (stage/'setup/ready.json').write_text(json.dumps({'version':1,'resource_version':RESOURCE_VERSION,'layout_version':layout_migration.VERSION,'rom_sha256':entry['main_partition_sha256']})+'\n')
         if copy_game and not destination.exists():
             shutil.copyfile(rom, stage/'game-copy.cci')
             validate(stage/'game-copy.cci')

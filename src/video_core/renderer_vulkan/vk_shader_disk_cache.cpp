@@ -19,6 +19,7 @@
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/atlas_render.h"
 #include "mm3d/fog.h"
+#include "mm3d/titles.h"
 #endif
 
 #define MALFORMED_DISK_CACHE                                                                       \
@@ -162,7 +163,7 @@ std::optional<std::pair<u64, Shader* const>> ShaderDiskCache::UseFragmentShader(
     // Restrict this presentation option to DekUI's supported MM3D title.
     // Apply before hashing so both shader generators and the disk cache use
     // the actual no-fog configuration, without modifying guest registers.
-    if (title_id == 0x0004000000125500ULL && MM3D::Fog::disabled.load() &&
+    if (MM3D::Titles::IsSupported(title_id) && MM3D::Fog::disabled.load() &&
         fs_config.texture.fog_mode == Pica::TexturingRegs::FogMode::Fog) {
         fs_config.texture.fog_mode.Assign(Pica::TexturingRegs::FogMode::None);
     }
@@ -258,7 +259,7 @@ std::optional<std::pair<u64, Shader* const>> ShaderDiskCache::UseFixedGeometrySh
 std::pair<u64, Shader*> ShaderDiskCache::GetHybridShader(
     FSConfig config, const UserConfig& user, bool atlas) {
 #ifdef ENABLE_MM3D_PRESENTATION
-    if (title_id == 0x0004000000125500ULL && MM3D::Fog::disabled.load() &&
+    if (MM3D::Titles::IsSupported(title_id) && MM3D::Fog::disabled.load() &&
         config.texture.fog_mode == Pica::TexturingRegs::FogMode::Fog)
         config.texture.fog_mode.Assign(Pica::TexturingRegs::FogMode::None);
 #endif
@@ -1150,7 +1151,7 @@ bool ShaderDiskCache::InitFSCache(const std::atomic_bool& stop_loading,
         LOG_DEBUG(Render_Vulkan, "    linked with new SPIRV.");
     }
 
-    if (parent.HybridEnabled() && title_id == 0x0004000000125500ULL) {
+    if (parent.HybridEnabled() && MM3D::Titles::IsSupported(title_id)) {
         for (const auto& [hash, offset] : pending_configs) {
             if (stop_loading) break;
             const auto cached = fs_cache.ReadAt(offset);

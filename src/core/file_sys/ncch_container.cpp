@@ -5,6 +5,7 @@
 #include <cstring>
 #ifdef ENABLE_MM3D_PRESENTATION
 #include "mm3d/translation.h"
+#include "mm3d/titles.h"
 #endif
 #include <memory>
 #include <span>
@@ -641,7 +642,7 @@ Loader::ResultStatus NCCHContainer::ReadRomFS(std::shared_ptr<RomFSReader>& romf
 
 #ifdef ENABLE_MM3D_PRESENTATION
     const auto translation = MM3D::Translation::RomFS();
-    if (!is_proto && use_layered_fs && GetModId(ncch_header.program_id) == 0x0004000000125500ULL &&
+    if (!is_proto && use_layered_fs && MM3D::Titles::IsSupported(GetModId(ncch_header.program_id)) &&
         !translation.empty()) {
         romfs_file = std::make_shared<LayeredFS>(std::move(romfs_file), translation, "");
     }

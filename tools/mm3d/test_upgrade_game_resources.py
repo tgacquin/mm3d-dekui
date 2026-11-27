@@ -52,11 +52,11 @@ class ResourceUpgradeTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def builders(self):
-        def extract(rom, output):
+        def extract(rom, output, entry=None):
             for name, data in self.old.items():
                 p = output/'romfs/message/us'/name
                 p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(data)
-        def build(original, restoration, output):
+        def build(original, restoration, output, with_messages=True):
             for name, data in self.new.items():
                 p = output/'romfs/message/us'/name
                 p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(data)
@@ -64,6 +64,7 @@ class ResourceUpgradeTests(unittest.TestCase):
              patch.object(setup_game_folder, 'validate') as validate, \
              patch.object(setup_game_folder, 'extract', side_effect=extract) as extract_mock, \
              patch.object(build_release_assets, 'build', side_effect=build):
+            validate.return_value = setup_game_folder.find_supported(self.rom_hash)
             yield validate, extract_mock
 
     def run_upgrade(self):

@@ -14,6 +14,7 @@
 #include "core/memory.h"
 #include "core/hle/kernel/process.h"
 #include "mm3d/simple_cheats.h"
+#include "mm3d/titles.h"
 #endif
 
 namespace Cheats {
@@ -119,7 +120,7 @@ void CheatEngine::RunCallback([[maybe_unused]] std::uintptr_t user_data, s64 cyc
             std::optional<u32> Read(u32 at){return memory.Read32OrNullopt(process,at);}
             void Write(u32 at,u32 value){memory.Write32(process,at,value);}
         } guest{system.Memory(),*process};
-        MM3D::SimpleCheats::Tick(guest,process->codeset&&process->codeset->program_id==0x0004000000125500ULL);
+        MM3D::SimpleCheats::Tick(guest,process->codeset&&MM3D::Titles::IsSupported(process->codeset->program_id));
     } else MM3D::SimpleCheats::Reset();
 #endif
     {

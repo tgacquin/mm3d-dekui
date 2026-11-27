@@ -14,6 +14,7 @@
 #include <string_view>
 #include "core/core.h"
 #include "core/loader/loader.h"
+#include "mm3d/titles.h"
 #include "video_core/pica/shader_setup.h"
 #include "video_core/renderer_vulkan/pica_to_vk.h"
 #include "video_core/renderer_vulkan/vk_descriptor_update_queue.h"
@@ -641,7 +642,7 @@ void PipelineCache::UseFragmentShader(const Pica::RegsInternal& regs,
 
     auto res = curr_disk_cache->UseFragmentShader(regs, user, atlas);
     hybrid_fragment.reset();
-    if (hybrid_enabled && GetProgramID() == 0x0004000000125500ULL) {
+    if (hybrid_enabled && MM3D::Titles::IsSupported(GetProgramID())) {
         FSConfig config{regs};
         hybrid_uniforms = Pica::Shader::Hybrid::MakeUniforms(config);
         hybrid_fragment = curr_disk_cache->GetHybridShader(config, user, atlas);

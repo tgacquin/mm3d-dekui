@@ -12,10 +12,11 @@ import layout_migration
 # Recovery-only path: old interrupted journals may contain this retired asset.
 LEGACY_SKY = 'setup/file_select_sky.rgba'
 RESOURCE_VERSION = 2
-TITLE = '0004000000125500'
 MESSAGE_NAMES = ('use.gmsg', 'usf.gmsg', 'uss.gmsg')
 # Outputs verified against the compiled English/French/Spanish dialogue storage.
 MESSAGE_HASHES = {'use.gmsg': '70bd72f961a6ff168604249b4c76f893f1cad6fbd9da0290e85f49cd319a1314', 'usf.gmsg': 'b848188634a5bf6c9f2cd837102420dbe0a3275d7fd17bbe0057e8dcbd173a77', 'uss.gmsg': '3310a03cf6d67a4ce7c054d7fff2b31fd309fcf966e91610f83ffdd92281a688'}
+# USA is the only region with classic-dialogue storage; other regions keep native messages.
+TITLE = '0004000000125500'  # USA: the only region with classic-dialogue storage
 MESSAGE_PATHS = tuple('load/mods/'+TITLE+'/romfs/message/us/'+n for n in MESSAGE_NAMES)
 # Retain this journal path only to recover transactions staged by earlier builds.
 NOTEBOOK = 'config/mm3d-local/notebook.json'
@@ -181,10 +182,12 @@ def upgrade(root, rom, restoration):
     from build_release_assets import build
     user = root/'user'
     with locked(user):
-        expected_rom = json.loads((RESOURCES/'supported-rom.json').read_text())['main_partition_sha256']
+        from setup_game_folder import find_supported
         ready = json.loads(checked(user, READY).read_bytes())
-        if ready.get('version') != 1 or ready.get('rom_sha256') != expected_rom:
+        installed = find_supported(ready.get('rom_sha256'))
+        if ready.get('version') != 1 or installed is None:
             raise ValueError('Unrecognized game setup. Existing user data was not replaced.')
+        has_messages = bool(installed['message_dir'])
         version = ready.get('resource_version', 1)
         if type(version) is not int or version not in (1, RESOURCE_VERSION):
             raise ValueError('Unsupported resource version; refusing to downgrade or replace user data.')
@@ -193,7 +196,8 @@ def upgrade(root, rom, restoration):
             v = ready.get(key, 0)
             if type(v) is not int or not 0 <= v <= maximum:
                 raise ValueError('Unsupported '+key+'; refusing to downgrade user data')
-        validate(rom)
+        if validate(rom)['main_partition_sha256'] != installed['main_partition_sha256']:
+            raise ValueError('This game file does not match the one used for setup. Existing user data was not replaced.')
         resume(user)
         ready = json.loads(checked(user, READY).read_bytes())
         changes = {}
@@ -215,13 +219,13 @@ def upgrade(root, rom, restoration):
                     if target.is_file() and digest(target.read_bytes().replace(b'\r\n', b'\n')) == sha:
                         changes[relative] = None  # Exact disabled stock profiles only; backed up first.
             ready['layout_version'] = layout_migration.VERSION
-        missing = any(not checked(user, p).is_file() for p in MESSAGE_PATHS)
+        missing = has_messages and any(not checked(user, p).is_file() for p in MESSAGE_PATHS)
         if ready.get('resource_version', 1) < RESOURCE_VERSION or missing:
             with tempfile.TemporaryDirectory(prefix='.resource-build-', dir=user/'setup') as tmp:
                 stage = Path(tmp)
-                extract(rom, stage/'original')
-                build(stage/'original', restoration, stage/'mods')
-                for name, relative in zip(MESSAGE_NAMES, MESSAGE_PATHS):
+                extract(rom, stage/'original', installed)
+                build(stage/'original', restoration, stage/'mods', with_messages=has_messages)
+                for name, relative in (zip(MESSAGE_NAMES, MESSAGE_PATHS) if has_messages else ()):
                     new = (stage/'mods/romfs/message/us'/name).read_bytes()
                     if digest(new) != MESSAGE_HASHES[name]:
                         raise ValueError('Generated dialogue checksum mismatch: '+name)
@@ -230,7 +234,7 @@ def upgrade(root, rom, restoration):
                     if target.exists() and target.read_bytes() not in (original, new):
                         raise ValueError('Custom dialogue resource conflicts with this update: '+str(target)+'. Back it up and move that file out of the mods folder, then retry. Saves and settings were not replaced.')
                     changes[relative] = new
-        else:
+        elif has_messages:
             for name, relative in zip(MESSAGE_NAMES, MESSAGE_PATHS):
                 if digest(checked(user, relative).read_bytes()) != MESSAGE_HASHES[name]:
                     raise ValueError('Installed dialogue is modified or damaged: '+relative+'. Back up and move that file out of the mods folder, then retry. It was not overwritten.')
